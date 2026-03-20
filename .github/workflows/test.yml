@@ -38,6 +38,6 @@ jobs:
         with:
           gradle-version: "8.5"
 
-      - name: Build Android app
+      - name: Build and test Android app
         working-directory: shield-app
-        run: gradle build
+        run: gradle assembleDebug testDebugUnitTest
