@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Download settings
     download_wait_timeout: int = 30
 
+    # Security
+    api_secret: str = ""
+    token_encryption_key: str = ""
+
     model_config = {"env_file": ".env"}
 
 
