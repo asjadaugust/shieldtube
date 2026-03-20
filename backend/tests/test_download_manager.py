@@ -200,7 +200,7 @@ async def test_monitor_sets_cached_on_success(tmp_path, db_with_video):
 
         # Run monitor directly and await it
         with patch("backend.services.download_manager.asyncio.sleep", new=AsyncMock()):
-            await mgr._monitor_download("test_vid", mock_proc)
+            await mgr._monitor_download("test_vid", "test_vid", mock_proc)
 
     assert state.status == "cached"
     assert state.expected_size == 1000  # updated to actual file size
@@ -235,7 +235,7 @@ async def test_monitor_sets_error_on_failure(tmp_path, db_with_video):
         state = await mgr.get_or_start_download("test_vid")
 
         with patch("backend.services.download_manager.asyncio.sleep", new=AsyncMock()):
-            await mgr._monitor_download("test_vid", mock_proc)
+            await mgr._monitor_download("test_vid", "test_vid", mock_proc)
 
     assert state.status == "error"
     assert state.error_message is not None

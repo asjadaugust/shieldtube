@@ -196,10 +196,12 @@ def _make_state(tmp_path: Path, video_id: str, quality: str = "auto") -> Downloa
 
 @pytest.fixture(autouse=True)
 def clean_app_state():
-    """Restore app.state.download_manager after each test."""
+    """Ensure app.state.download_manager exists for lifespan teardown."""
     from backend.api.main import app
 
     original = getattr(app.state, "download_manager", None)
+    if not hasattr(app.state, "download_manager"):
+        app.state.download_manager = MagicMock()
     yield
     if original is None:
         try:
