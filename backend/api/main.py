@@ -6,6 +6,7 @@ from backend.db.database import init_db, close_db, get_db
 from backend.config import settings
 from backend.services.download_manager import DownloadManager
 from backend.services.download_queue import DownloadQueue
+from backend.services.feed_refresher import FeedRefresher
 
 
 @asynccontextmanager
@@ -38,8 +39,15 @@ async def lifespan(app: FastAPI):
     await queue.start()
     app.state.download_queue = queue
 
+    # Initialize feed background refresher
+    refresher = FeedRefresher(db, download_queue=app.state.download_queue)
+    await refresher.start()
+    app.state.feed_refresher = refresher
+
     yield
 
+    if hasattr(app.state, "feed_refresher"):
+        await app.state.feed_refresher.stop()
     if hasattr(app.state, "download_queue"):
         await app.state.download_queue.stop()
     await close_db()
