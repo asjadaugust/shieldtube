@@ -1,7 +1,15 @@
 import yt_dlp
 
+QUALITY_FORMATS = {
+    "4K_HDR": "bestvideo[vcodec=vp09.02][height<=2160]+bestaudio/bestvideo[height<=2160]+bestaudio/best",
+    "4K": "bestvideo[height<=2160]+bestaudio/best",
+    "1080p": "bestvideo[height<=1080]+bestaudio/best",
+    "720p": "bestvideo[height<=720]+bestaudio/best",
+    "auto": None,  # Use existing HDR-preference logic
+}
 
-def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
+
+def resolve_stream(video_id: str, prefer_hdr: bool = True, quality: str = "auto") -> dict:
     """Resolve a YouTube video ID into separate video and audio stream URLs."""
     opts = {
         "quiet": True,
@@ -9,7 +17,9 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
         "extract_flat": False,
     }
 
-    if prefer_hdr:
+    if quality != "auto" and quality in QUALITY_FORMATS:
+        opts["format"] = QUALITY_FORMATS[quality]
+    elif prefer_hdr:
         opts["format"] = (
             "bestvideo[vcodec=vp09.02][height<=2160]+bestaudio/"
             "bestvideo[vcodec^=vp9][height<=2160]+bestaudio/"
