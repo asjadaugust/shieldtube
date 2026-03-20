@@ -5,6 +5,7 @@ from pathlib import Path
 
 from backend.config import settings
 from backend.db.database import get_db
+from backend.services.sponsorblock import get_segments
 from backend.services.thumbnail_cache import ThumbnailCache
 
 router = APIRouter()
@@ -111,6 +112,17 @@ async def _iter_growing_file(file_path: Path, start: int, end: int, state):
             if (file_path.stat().st_size if file_path.exists() else 0) <= position:
                 if state.status != "cached":
                     break  # Timeout
+
+
+@router.get("/sponsorblock/{video_id}")
+async def get_sponsor_segments(video_id: str):
+    """Return SponsorBlock skip segments for a video."""
+    db = await get_db()
+    segments = await get_segments(video_id, db)
+    return {
+        "video_id": video_id,
+        "segments": segments,
+    }
 
 
 # Thumbnail endpoint — unchanged

@@ -1,3 +1,4 @@
+import sqlite3
 import aiosqlite
 from pathlib import Path
 
@@ -31,8 +32,24 @@ async def close_db() -> None:
 
 
 async def _run_migrations(db: aiosqlite.Connection) -> None:
-    """Run all SQL migration files in order."""
+    """Run all SQL migration files in order.
+
+    Each statement is executed individually so that idempotent statements
+    (e.g. ALTER TABLE ADD COLUMN) can be retried safely — duplicate-column
+    errors are silently ignored.
+    """
     for sql_file in sorted(MIGRATIONS_DIR.glob("*.sql")):
         sql = sql_file.read_text()
-        await db.executescript(sql)
+        # Split on semicolons and execute each non-empty statement separately
+        for statement in sql.split(";"):
+            stmt = statement.strip()
+            if not stmt:
+                continue
+            try:
+                await db.execute(stmt)
+            except sqlite3.OperationalError as exc:
+                # Ignore "duplicate column" errors from ADD COLUMN on re-runs
+                if "duplicate column" in str(exc).lower():
+                    continue
+                raise
     await db.commit()
