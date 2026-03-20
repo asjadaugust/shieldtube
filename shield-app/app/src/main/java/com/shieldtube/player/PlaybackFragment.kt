@@ -251,7 +251,7 @@ class PlaybackFragment : Fragment() {
                                 exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
                             }
                             // Populate chapters and start chapter checking if non-empty
-                            chapters = meta.chapters
+                            chapters = meta.chapters.orEmpty()
                             if (chapters.isNotEmpty()) {
                                 startChapterChecking(exoPlayer)
                             }

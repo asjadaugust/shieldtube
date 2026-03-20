@@ -223,9 +223,8 @@ class ModelsTest {
 
         val meta = gson.fromJson(json, VideoMeta::class.java)
 
-        // When chapters field is absent from JSON, should default to empty list
-        assertNotNull(meta.chapters)
-        assertTrue(meta.chapters.isEmpty())
+        // When chapters field is absent from JSON, Gson sets it to null
+        assertNull(meta.chapters)
     }
 
     @Test

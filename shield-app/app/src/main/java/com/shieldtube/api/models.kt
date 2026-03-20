@@ -39,7 +39,7 @@ data class VideoMeta(
     val duration: Int?,
     @SerializedName("cache_status") val cacheStatus: String?,
     @SerializedName("last_position_seconds") val lastPositionSeconds: Int,
-    val chapters: List<Chapter> = emptyList()
+    val chapters: List<Chapter>? = null
 )
 
 data class SponsorSegment(
