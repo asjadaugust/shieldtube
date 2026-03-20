@@ -22,6 +22,7 @@ class Video:
     last_accessed: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    chapters_json: str | None = None
 
 
 @dataclass
