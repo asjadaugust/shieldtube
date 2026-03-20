@@ -70,3 +70,12 @@ class AuthToken:
             return datetime.now(timezone.utc) >= expires
         except ValueError:
             return True
+
+
+@dataclass
+class WatchHistoryEntry:
+    video_id: str
+    watched_at: str
+    position_seconds: int = 0
+    duration: int | None = None
+    completed: int = 0

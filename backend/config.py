@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Thumbnail settings
     thumbnail_concurrency: int = 10
 
+    # Download settings
+    download_wait_timeout: int = 30
+
     model_config = {"env_file": ".env"}
 
 

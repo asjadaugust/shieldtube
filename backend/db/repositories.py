@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from backend.db.models import Video, FeedCache, Thumbnail, AuthToken
+from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry
 
 
 def _row_to_video(row: aiosqlite.Row) -> Video:
@@ -324,3 +324,44 @@ class AuthTokenRepo:
             },
         )
         await self._db.commit()
+
+
+def _row_to_watch_history(row: aiosqlite.Row) -> WatchHistoryEntry:
+    return WatchHistoryEntry(
+        video_id=row["video_id"],
+        watched_at=row["watched_at"],
+        position_seconds=row["position_seconds"],
+        duration=row["duration"],
+        completed=row["completed"],
+    )
+
+
+class WatchHistoryRepo:
+    def __init__(self, db: aiosqlite.Connection):
+        self._db = db
+
+    async def upsert(self, entry: WatchHistoryEntry) -> None:
+        completed = 0
+        if entry.duration and entry.duration > 0 and entry.position_seconds > 0.9 * entry.duration:
+            completed = 1
+        await self._db.execute(
+            """INSERT OR REPLACE INTO watch_history
+               (video_id, watched_at, position_seconds, duration, completed)
+               VALUES (?, ?, ?, ?, ?)""",
+            (entry.video_id, entry.watched_at, entry.position_seconds, entry.duration, completed),
+        )
+        await self._db.commit()
+
+    async def get(self, video_id: str) -> WatchHistoryEntry | None:
+        async with self._db.execute(
+            "SELECT * FROM watch_history WHERE video_id = ?", (video_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return _row_to_watch_history(row) if row else None
+
+    async def get_recent(self, limit: int = 50) -> list[WatchHistoryEntry]:
+        async with self._db.execute(
+            "SELECT * FROM watch_history ORDER BY watched_at DESC LIMIT ?", (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_row_to_watch_history(r) for r in rows]

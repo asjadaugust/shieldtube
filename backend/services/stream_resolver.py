@@ -27,15 +27,23 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
             download=False,
         )
         if "requested_formats" in info:
-            video_url = info["requested_formats"][0]["url"]
-            audio_url = info["requested_formats"][1]["url"]
+            video_fmt = info["requested_formats"][0]
+            audio_fmt = info["requested_formats"][1]
+            video_url = video_fmt["url"]
+            audio_url = audio_fmt["url"]
+            filesize = (
+                (video_fmt.get("filesize") or video_fmt.get("filesize_approx") or 0)
+                + (audio_fmt.get("filesize") or audio_fmt.get("filesize_approx") or 0)
+            )
         else:
             video_url = info["url"]
             audio_url = None
+            filesize = info.get("filesize") or info.get("filesize_approx") or 0
 
         return {
             "video_url": video_url,
             "audio_url": audio_url,
             "duration": info["duration"],
             "title": info["title"],
+            "filesize": filesize if filesize > 0 else 100_000_000,
         }
