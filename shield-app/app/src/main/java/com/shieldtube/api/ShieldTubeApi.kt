@@ -36,4 +36,7 @@ interface ShieldTubeApi {
 
     @GET("/api/video/{videoId}/subtitles")
     suspend fun getSubtitles(@Path("videoId") videoId: String): SubtitleResponse
+
+    @GET("/api/video/{videoId}/formats")
+    suspend fun getFormats(@Path("videoId") videoId: String): FormatsResponse
 }

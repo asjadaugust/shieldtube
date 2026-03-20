@@ -27,6 +27,7 @@ import com.shieldtube.api.Chapter
 import com.shieldtube.api.ProgressBody
 import com.shieldtube.api.SponsorSegment
 import com.shieldtube.api.SubtitleTrack
+import com.shieldtube.api.VideoFormat
 import kotlinx.coroutines.*
 
 class PlaybackFragment : Fragment() {
@@ -70,6 +71,12 @@ class PlaybackFragment : Fragment() {
     private var currentSpeed: Float = 1.0f
     private var speedOverlay: LinearLayout? = null
     private val SPEED_OPTIONS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+    // Quality selection state
+    private var selectedQuality: String = "auto"
+    private var availableFormats: List<VideoFormat> = emptyList()
+    private var qualityOverlay: LinearLayout? = null
+    private var qualityOverlayVisible: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -149,6 +156,18 @@ class PlaybackFragment : Fragment() {
                 }
             }
             addView(speedOverlay)
+            qualityOverlay = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.parseColor("#CC000000"))
+                setPadding(32, 16, 32, 16)
+                visibility = View.GONE
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
+                )
+            }
+            addView(qualityOverlay)
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     when {
@@ -166,6 +185,14 @@ class PlaybackFragment : Fragment() {
                         }
                         keyCode == KeyEvent.KEYCODE_DPAD_UP && event.isLongPress -> {
                             toggleSpeedOverlay()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_MENU -> {
+                            toggleQualityOverlay()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_BACK && qualityOverlayVisible -> {
+                            hideQualityOverlay()
                             true
                         }
                         keyCode == KeyEvent.KEYCODE_BACK && subtitleOverlayVisible -> {
@@ -212,7 +239,7 @@ class PlaybackFragment : Fragment() {
                 .also { exoPlayer ->
                     playerView?.player = exoPlayer
 
-                    val streamUrl = "$BACKEND_HOST/api/video/$videoId/stream"
+                    val streamUrl = buildStreamUrl(videoId)
                     val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
                     exoPlayer.setMediaItem(mediaItem)
 
@@ -240,6 +267,16 @@ class PlaybackFragment : Fragment() {
                             subtitleTracks = subtitleResponse.tracks
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed to fetch subtitles: ${e.message}")
+                        }
+                    }
+
+                    // Fetch available quality formats (non-blocking)
+                    lifecycleScope.launch {
+                        try {
+                            val formatsResponse = ApiClient.api.getFormats(videoId)
+                            availableFormats = formatsResponse.formats
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch quality formats: ${e.message}")
                         }
                     }
 
@@ -465,7 +502,7 @@ class PlaybackFragment : Fragment() {
         currentSubtitleLang = lang
         hideSubtitleOverlay()
 
-        val streamUrl = "$BACKEND_HOST/api/video/$vid/stream"
+        val streamUrl = buildStreamUrl(vid)
         val mediaItem = if (lang != null) {
             val subtitleUri = Uri.parse("$BACKEND_HOST/api/video/$vid/subtitles/$lang")
             val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
@@ -519,6 +556,89 @@ class PlaybackFragment : Fragment() {
         speedOverlay?.visibility = View.GONE
     }
 
+    /**
+     * Build the stream URL for the current video, appending ?quality=<preset> when not "auto".
+     */
+    private fun buildStreamUrl(vid: String): String {
+        val base = "$BACKEND_HOST/api/video/$vid/stream"
+        return if (selectedQuality != "auto") "$base?quality=$selectedQuality" else base
+    }
+
+    private fun toggleQualityOverlay() {
+        if (qualityOverlayVisible) {
+            hideQualityOverlay()
+        } else {
+            showQualityOverlay()
+        }
+    }
+
+    private fun showQualityOverlay() {
+        val menu = qualityOverlay ?: return
+        menu.removeAllViews()
+
+        val formats = if (availableFormats.isNotEmpty()) availableFormats else listOf(
+            com.shieldtube.api.VideoFormat("auto", "Auto (Best HDR)"),
+            com.shieldtube.api.VideoFormat("4K_HDR", "4K HDR"),
+            com.shieldtube.api.VideoFormat("4K", "4K"),
+            com.shieldtube.api.VideoFormat("1080p", "1080p"),
+            com.shieldtube.api.VideoFormat("720p", "720p"),
+        )
+
+        formats.forEach { format ->
+            val isSelected = format.quality == selectedQuality
+            val item = TextView(requireContext()).apply {
+                text = if (isSelected) "• ${format.label}" else "  ${format.label}"
+                setTextColor(if (isSelected) Color.parseColor("#e94560") else Color.WHITE)
+                textSize = 18f
+                setPadding(24, 12, 48, 12)
+                setOnClickListener { selectQuality(format.quality) }
+            }
+            menu.addView(item)
+        }
+
+        menu.visibility = View.VISIBLE
+        qualityOverlayVisible = true
+    }
+
+    private fun hideQualityOverlay() {
+        qualityOverlay?.visibility = View.GONE
+        qualityOverlayVisible = false
+    }
+
+    /**
+     * Apply a quality selection and restart playback with the new stream URL.
+     */
+    private fun selectQuality(quality: String) {
+        val exoPlayer = player ?: return
+        val vid = videoId ?: return
+
+        selectedQuality = quality
+        hideQualityOverlay()
+
+        val streamUrl = buildStreamUrl(vid)
+        val mediaItem = if (currentSubtitleLang != null) {
+            val subtitleUri = Uri.parse("$BACKEND_HOST/api/video/$vid/subtitles/$currentSubtitleLang")
+            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage(currentSubtitleLang!!)
+                .build()
+            MediaItem.Builder()
+                .setUri(Uri.parse(streamUrl))
+                .setSubtitleConfigurations(listOf(subtitleConfig))
+                .build()
+        } else {
+            MediaItem.fromUri(Uri.parse(streamUrl))
+        }
+
+        val resumePosition = exoPlayer.currentPosition
+        exoPlayer.setMediaItem(mediaItem, resumePosition)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+
+        val label = availableFormats.firstOrNull { it.quality == quality }?.label ?: quality
+        Toast.makeText(requireContext(), "Quality: $label", Toast.LENGTH_SHORT).show()
+    }
+
     private fun releasePlayer() {
         // Send final progress report
         videoId?.let { vid ->
@@ -559,6 +679,11 @@ class PlaybackFragment : Fragment() {
         currentSpeed = 1.0f
         speedOverlay?.visibility = View.GONE
         speedOverlay = null
+        selectedQuality = "auto"
+        availableFormats = emptyList()
+        qualityOverlay?.visibility = View.GONE
+        qualityOverlay = null
+        qualityOverlayVisible = false
         player?.release()
         player = null
     }
