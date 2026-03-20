@@ -81,7 +81,7 @@ async def generic_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
-from backend.api.routers import video, feed, search, auth, watch, cache  # noqa: E402
+from backend.api.routers import video, feed, search, auth, watch, cache, cast  # noqa: E402
 
 app.include_router(video.router, prefix="/api")
 app.include_router(feed.router, prefix="/api")
@@ -89,3 +89,4 @@ app.include_router(search.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(watch.router, prefix="/api")
 app.include_router(cache.router, prefix="/api")
+app.include_router(cast.router, prefix="/api")
