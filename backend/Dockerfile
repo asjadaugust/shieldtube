@@ -1,10 +1,8 @@
 FROM python:3.11-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg openssl && \
     rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir yt-dlp
 
 WORKDIR /app
 
@@ -14,5 +12,6 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY . ./backend/
 
-EXPOSE 8080
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+EXPOSE 8443
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8443", \
+     "--ssl-keyfile", "/app/config/certs/key.pem", "--ssl-certfile", "/app/config/certs/cert.pem"]

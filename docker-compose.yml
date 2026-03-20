@@ -5,10 +5,13 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8443:8443"
     volumes:
       - ./cache:/app/cache
+      - ./config/certs:/app/config/certs:ro
     environment:
       - CACHE_DIR=/app/cache
       - FFMPEG_THREADS=${FFMPEG_THREADS:-2}
+      - API_SECRET=${API_SECRET:-}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-}
     restart: unless-stopped

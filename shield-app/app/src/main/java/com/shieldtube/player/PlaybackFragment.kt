@@ -33,7 +33,7 @@ import kotlinx.coroutines.*
 class PlaybackFragment : Fragment() {
 
     companion object {
-        const val BACKEND_HOST = "http://192.168.1.100:8080"
+        const val BACKEND_HOST = "https://192.168.1.100:8443"
         private const val ARG_VIDEO_ID = "video_id"
         private const val TAG = "PlaybackFragment"
 
