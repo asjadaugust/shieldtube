@@ -197,14 +197,15 @@ class ModelsTest {
         val meta = gson.fromJson(json, VideoMeta::class.java)
 
         assertEquals("dQw4w9WgXcQ", meta.id)
-        assertEquals(3, meta.chapters.size)
-        assertEquals("Intro", meta.chapters[0].title)
-        assertEquals(0.0, meta.chapters[0].startTime, 0.001)
-        assertEquals(30.0, meta.chapters[0].endTime, 0.001)
-        assertEquals("Main Content", meta.chapters[1].title)
-        assertEquals(30.0, meta.chapters[1].startTime, 0.001)
-        assertEquals("Outro", meta.chapters[2].title)
-        assertEquals(212.0, meta.chapters[2].endTime, 0.001)
+        assertNotNull(meta.chapters)
+        assertEquals(3, meta.chapters!!.size)
+        assertEquals("Intro", meta.chapters!![0].title)
+        assertEquals(0.0, meta.chapters!![0].startTime, 0.001)
+        assertEquals(30.0, meta.chapters!![0].endTime, 0.001)
+        assertEquals("Main Content", meta.chapters!![1].title)
+        assertEquals(30.0, meta.chapters!![1].startTime, 0.001)
+        assertEquals("Outro", meta.chapters!![2].title)
+        assertEquals(212.0, meta.chapters!![2].endTime, 0.001)
     }
 
     @Test
@@ -245,7 +246,7 @@ class ModelsTest {
         val meta = gson.fromJson(json, VideoMeta::class.java)
 
         assertNotNull(meta.chapters)
-        assertTrue(meta.chapters.isEmpty())
+        assertTrue(meta.chapters!!.isEmpty())
     }
 
     @Test
