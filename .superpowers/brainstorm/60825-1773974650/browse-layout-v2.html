@@ -1,0 +1,67 @@
+<h2>Shield TV Browse Layout</h2>
+<p class="subtitle">How should the main browse screen be organized?</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:20px;min-height:280px;">
+      <div style="display:flex;gap:12px;height:100%;">
+        <div style="width:140px;flex-shrink:0;">
+          <div style="color:#e94560;font-weight:bold;font-size:13px;padding:8px 0;border-left:3px solid #e94560;padding-left:8px;margin-bottom:16px;">Home</div>
+          <div style="color:#666;font-size:13px;padding:8px 0;padding-left:11px;margin-bottom:12px;">Subscriptions</div>
+          <div style="color:#666;font-size:13px;padding:8px 0;padding-left:11px;margin-bottom:12px;">Search</div>
+          <div style="color:#666;font-size:13px;padding:8px 0;padding-left:11px;">Settings</div>
+        </div>
+        <div style="flex:1;overflow:hidden;">
+          <div style="color:#888;font-size:11px;margin-bottom:8px;">Popular</div>
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+          </div>
+          <div style="color:#888;font-size:11px;margin-bottom:8px;">Trending</div>
+          <div style="display:flex;gap:8px;">
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+            <div style="width:120px;height:68px;background:#16213e;border-radius:4px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A: Standard Leanback (selected)</h3>
+      <p>Left sidebar headers, horizontal card rows. Native Android TV pattern — familiar to Shield users. D-pad navigation works out of the box. <strong>This is what you picked.</strong></p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e;padding:20px;min-height:280px;">
+      <div>
+        <div style="display:flex;gap:24px;margin-bottom:20px;padding-bottom:8px;border-bottom:1px solid #333;">
+          <div style="color:#e94560;font-size:13px;font-weight:bold;border-bottom:2px solid #e94560;padding-bottom:6px;">Home</div>
+          <div style="color:#666;font-size:13px;padding-bottom:6px;">Subscriptions</div>
+          <div style="color:#666;font-size:13px;padding-bottom:6px;">Search</div>
+        </div>
+        <div style="color:#888;font-size:11px;margin-bottom:8px;">Popular Right Now</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+        </div>
+        <div style="color:#888;font-size:11px;margin-bottom:8px;">Trending</div>
+        <div style="display:flex;gap:8px;">
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+          <div style="width:140px;height:80px;background:#16213e;border-radius:4px;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B: Top Tab Navigation</h3>
+      <p>Horizontal tabs at top, full-width card rows below. More screen real estate for content, but non-standard for Leanback — requires custom navigation handling.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:32px;padding:2px 16px;border-left:3px solid #e94560;">
+  <p style="color:#ccc;font-size:14px;">You previously chose <strong>A: Standard Leanback</strong>. Click to change, or continue in the terminal to see the card designs.</p>
+</div>

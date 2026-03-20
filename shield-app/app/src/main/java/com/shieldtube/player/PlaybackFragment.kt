@@ -10,11 +10,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -23,6 +25,7 @@ import com.shieldtube.api.ApiClient
 import com.shieldtube.api.Chapter
 import com.shieldtube.api.ProgressBody
 import com.shieldtube.api.SponsorSegment
+import com.shieldtube.api.SubtitleTrack
 import kotlinx.coroutines.*
 
 class PlaybackFragment : Fragment() {
@@ -56,6 +59,12 @@ class PlaybackFragment : Fragment() {
     private var chapterCheckJob: Job? = null
     private var chapterOverlay: TextView? = null
 
+    // Subtitle state
+    private var subtitleTracks: List<SubtitleTrack> = emptyList()
+    private var currentSubtitleLang: String? = null
+    private var subtitleOverlay: LinearLayout? = null
+    private var subtitleOverlayVisible: Boolean = false
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -85,6 +94,22 @@ class PlaybackFragment : Fragment() {
         }
         chapterOverlay = overlay
 
+        // Subtitle selection overlay: vertical list on the left side, hidden by default
+        val subtitleMenu = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL or Gravity.START
+            ).also { params ->
+                params.setMargins(48, 0, 0, 0)
+            }
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            setPadding(16, 16, 16, 16)
+            visibility = View.GONE
+        }
+        subtitleOverlay = subtitleMenu
+
         val container = FrameLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -94,6 +119,7 @@ class PlaybackFragment : Fragment() {
             isFocusableInTouchMode = true
             addView(playerView)
             addView(overlay)
+            addView(subtitleMenu)
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     when {
@@ -103,6 +129,14 @@ class PlaybackFragment : Fragment() {
                         }
                         keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.isLongPress -> {
                             jumpToPreviousChapter()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.isLongPress -> {
+                            toggleSubtitleOverlay()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_BACK && subtitleOverlayVisible -> {
+                            hideSubtitleOverlay()
                             true
                         }
                         else -> false
@@ -163,6 +197,16 @@ class PlaybackFragment : Fragment() {
                             }
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed to fetch resume position/chapters: ${e.message}")
+                        }
+                    }
+
+                    // Fetch available subtitle tracks (non-blocking)
+                    lifecycleScope.launch {
+                        try {
+                            val subtitleResponse = ApiClient.api.getSubtitles(videoId)
+                            subtitleTracks = subtitleResponse.tracks
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch subtitles: ${e.message}")
                         }
                     }
 
@@ -330,6 +374,92 @@ class PlaybackFragment : Fragment() {
         }
     }
 
+    /**
+     * Show or hide the subtitle selection overlay.
+     * If no subtitle tracks are available, shows a toast instead.
+     */
+    private fun toggleSubtitleOverlay() {
+        if (subtitleOverlayVisible) {
+            hideSubtitleOverlay()
+        } else {
+            showSubtitleOverlay()
+        }
+    }
+
+    private fun showSubtitleOverlay() {
+        val menu = subtitleOverlay ?: return
+        menu.removeAllViews()
+
+        // Build option list: "Off" + one entry per language
+        val options: List<Pair<String?, String>> = listOf(null to "Off") +
+            subtitleTracks.map { track -> track.lang to track.name }
+
+        if (options.size == 1) {
+            // Only "Off" — no tracks available
+            Toast.makeText(requireContext(), "No subtitles available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        options.forEach { (lang, label) ->
+            val isSelected = lang == currentSubtitleLang
+            val item = TextView(requireContext()).apply {
+                text = if (isSelected) "• $label" else "  $label"
+                setTextColor(if (isSelected) Color.YELLOW else Color.WHITE)
+                textSize = 18f
+                setPadding(16, 12, 48, 12)
+                setOnClickListener { selectSubtitle(lang) }
+            }
+            menu.addView(item)
+        }
+
+        menu.visibility = View.VISIBLE
+        subtitleOverlayVisible = true
+    }
+
+    private fun hideSubtitleOverlay() {
+        subtitleOverlay?.visibility = View.GONE
+        subtitleOverlayVisible = false
+    }
+
+    /**
+     * Apply a subtitle selection. Pass null to disable subtitles ("Off").
+     * Rebuilds the MediaItem with or without a SubtitleConfiguration and re-prepares the player.
+     */
+    private fun selectSubtitle(lang: String?) {
+        val exoPlayer = player ?: return
+        val vid = videoId ?: return
+
+        currentSubtitleLang = lang
+        hideSubtitleOverlay()
+
+        val streamUrl = "$BACKEND_HOST/api/video/$vid/stream"
+        val mediaItem = if (lang != null) {
+            val subtitleUri = Uri.parse("$BACKEND_HOST/api/video/$vid/subtitles/$lang")
+            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage(lang)
+                .build()
+            MediaItem.Builder()
+                .setUri(Uri.parse(streamUrl))
+                .setSubtitleConfigurations(listOf(subtitleConfig))
+                .build()
+        } else {
+            MediaItem.fromUri(Uri.parse(streamUrl))
+        }
+
+        val resumePosition = exoPlayer.currentPosition
+        exoPlayer.setMediaItem(mediaItem, resumePosition)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+
+        val trackLabel = if (lang != null) {
+            subtitleTracks.firstOrNull { it.lang == lang }?.name ?: lang
+        } else {
+            "Off"
+        }
+        Toast.makeText(requireContext(), "Subtitles: $trackLabel", Toast.LENGTH_SHORT).show()
+    }
+
     private fun releasePlayer() {
         // Send final progress report
         videoId?.let { vid ->
@@ -363,6 +493,10 @@ class PlaybackFragment : Fragment() {
         chapters = emptyList()
         currentChapterIndex = -1
         chapterOverlay = null
+        subtitleTracks = emptyList()
+        currentSubtitleLang = null
+        subtitleOverlay = null
+        subtitleOverlayVisible = false
         player?.release()
         player = null
     }

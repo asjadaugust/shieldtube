@@ -33,4 +33,7 @@ interface ShieldTubeApi {
 
     @GET("/api/cast/now-playing")
     suspend fun getNowPlaying(): NowPlaying
+
+    @GET("/api/video/{videoId}/subtitles")
+    suspend fun getSubtitles(@Path("videoId") videoId: String): SubtitleResponse
 }

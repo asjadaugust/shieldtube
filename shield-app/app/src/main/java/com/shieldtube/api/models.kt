@@ -56,3 +56,14 @@ data class SponsorResponse(
 data class NowPlaying(
     @SerializedName("video_id") val videoId: String?
 )
+
+data class SubtitleTrack(
+    val lang: String,
+    val name: String,
+    val auto: Boolean = false
+)
+
+data class SubtitleResponse(
+    @SerializedName("video_id") val videoId: String,
+    val tracks: List<SubtitleTrack>
+)
