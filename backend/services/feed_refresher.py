@@ -13,8 +13,9 @@ from backend.db.repositories import VideoRepo
 
 logger = logging.getLogger(__name__)
 
-HOME_INTERVAL = 900    # 15 minutes
-SUBS_INTERVAL = 300    # 5 minutes
+HOME_INTERVAL = 900         # 15 minutes
+SUBS_INTERVAL = 300         # 5 minutes
+WATCH_LATER_INTERVAL = 900  # 15 minutes
 
 
 class FeedRefresher:
@@ -39,6 +40,7 @@ class FeedRefresher:
     async def _refresh_loop(self):
         last_home = 0.0
         last_subs = 0.0
+        last_watch_later = 0.0
 
         # Wait a bit before first refresh (let the app fully start)
         await asyncio.sleep(30)
@@ -54,6 +56,10 @@ class FeedRefresher:
                 if now - last_subs >= SUBS_INTERVAL:
                     await self._refresh_subscriptions()
                     last_subs = time.time()
+
+                if now - last_watch_later >= WATCH_LATER_INTERVAL:
+                    await self._refresh_watch_later()
+                    last_watch_later = time.time()
 
             except asyncio.CancelledError:
                 break
@@ -101,6 +107,25 @@ class FeedRefresher:
                 logger.info("Subscriptions unchanged (ETag match)")
         except Exception as e:
             logger.error(f"Subscriptions refresh failed: {e}")
+
+    async def _refresh_watch_later(self):
+        logger.info("Refreshing Watch Later feed...")
+        try:
+            auth = AuthManager(self._db)
+            api = YouTubeAPI(auth, self._db)
+            thumb = ThumbnailCache(self._db)
+            video_repo = VideoRepo(self._db)
+
+            videos, from_cache, _ = await api.get_watch_later()
+
+            if not from_cache:
+                await video_repo.upsert_many_from_dicts(videos)
+                await thumb.cache_thumbnails(videos)
+                logger.info(f"Watch Later feed refreshed: {len(videos)} videos")
+            else:
+                logger.info("Watch Later feed unchanged (ETag match)")
+        except Exception as e:
+            logger.error(f"Watch Later feed refresh failed: {e}")
 
     async def _check_precache(self, videos: list[dict]):
         try:
