@@ -536,7 +536,7 @@ class PlaybackFragment : Fragment() {
                 overlay.visibility = View.GONE
             } else {
                 overlay.visibility = View.VISIBLE
-                val currentIndex = SPEED_OPTIONS.indexOf(currentSpeed)
+                val currentIndex = SPEED_OPTIONS.indexOfFirst { it == currentSpeed }
                 if (currentIndex >= 0) overlay.getChildAt(currentIndex)?.requestFocus()
             }
         }
