@@ -8,3 +8,4 @@ cache/
 .gradle/
 build/
 local.properties
+.worktrees/
