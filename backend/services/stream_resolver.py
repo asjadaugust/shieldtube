@@ -40,6 +40,37 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
             audio_url = None
             filesize = info.get("filesize") or info.get("filesize_approx") or 0
 
+        # Build subtitle map: prefer manual subtitles over automatic captions.
+        # Within each language prefer vtt format; fall back to first available format.
+        subtitles: dict = {}
+        for lang, subs in (info.get("subtitles") or {}).items():
+            for sub in subs:
+                if sub.get("ext") == "vtt":
+                    subtitles[lang] = {
+                        "url": sub["url"],
+                        "ext": "vtt",
+                        "name": sub.get("name", lang),
+                    }
+                    break
+            if lang not in subtitles and subs:
+                subtitles[lang] = {
+                    "url": subs[0]["url"],
+                    "ext": subs[0].get("ext", "vtt"),
+                    "name": subs[0].get("name", lang),
+                }
+
+        for lang, subs in (info.get("automatic_captions") or {}).items():
+            if lang not in subtitles:
+                for sub in subs:
+                    if sub.get("ext") == "vtt":
+                        subtitles[lang] = {
+                            "url": sub["url"],
+                            "ext": "vtt",
+                            "name": f"{sub.get('name', lang)} (auto)",
+                            "auto": True,
+                        }
+                        break
+
         return {
             "video_url": video_url,
             "audio_url": audio_url,
@@ -47,4 +78,5 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
             "title": info["title"],
             "filesize": filesize if filesize > 0 else 100_000_000,
             "chapters": info.get("chapters") or [],
+            "subtitles": subtitles,
         }
