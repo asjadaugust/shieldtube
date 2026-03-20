@@ -189,6 +189,70 @@ class YouTubeAPI:
 
         return await self.get_video_details(video_ids)
 
+    async def get_watch_later(
+        self, max_results: int = 50
+    ) -> tuple[list[dict], bool, str | None]:
+        """Fetch the user's Watch Later playlist.
+
+        Returns:
+            (videos, from_cache, cached_at)
+            - from_cache=True when the server returned 304 Not Modified.
+            - cached_at is the ISO timestamp of the last fetch (304 path only).
+        """
+        feed_type = "watch_later"
+
+        etag_row = await (
+            await self._db.execute(
+                "SELECT etag, video_ids_json, fetched_at FROM feed_cache WHERE feed_type = ?",
+                (feed_type,),
+            )
+        ).fetchone()
+
+        headers = await self._auth.get_auth_headers()
+        if etag_row and etag_row["etag"]:
+            headers["If-None-Match"] = etag_row["etag"]
+
+        async with httpx.AsyncClient() as client:
+            async def _do_wl_request():
+                return await client.get(
+                    f"{_YT_API_BASE}/playlistItems",
+                    headers=headers,
+                    params={
+                        "part": "snippet,contentDetails",
+                        "playlistId": "WL",
+                        "maxResults": max_results,
+                    },
+                )
+            resp = await with_retry(_do_wl_request, description="YouTube API get_watch_later")
+
+        if resp.status_code == 304 and etag_row:
+            video_ids: list[str] = json.loads(etag_row["video_ids_json"])
+            videos = await self._load_cached_videos(video_ids)
+            return videos, True, etag_row["fetched_at"]
+
+        resp.raise_for_status()
+        data = resp.json()
+
+        video_ids = [
+            item["contentDetails"]["videoId"]
+            for item in data.get("items", [])
+            if "contentDetails" in item and "videoId" in item["contentDetails"]
+        ]
+
+        videos = await self.get_video_details(video_ids) if video_ids else []
+
+        new_etag = data.get("etag") or resp.headers.get("ETag", "")
+        fetched_at = datetime.now(timezone.utc).isoformat()
+
+        await self._db.execute(
+            "INSERT OR REPLACE INTO feed_cache (feed_type, video_ids_json, etag, fetched_at)"
+            " VALUES (?, ?, ?, ?)",
+            (feed_type, json.dumps(video_ids), new_etag, fetched_at),
+        )
+        await self._db.commit()
+
+        return videos, False, None
+
     async def get_video_details(self, video_ids: list[str]) -> list[dict]:
         """Fetch full metadata for a list of video IDs.
 
