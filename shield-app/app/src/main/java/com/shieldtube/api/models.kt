@@ -68,10 +68,6 @@ data class SubtitleResponse(
     val tracks: List<SubtitleTrack>
 )
 
-data class NowPlaying(
-    @SerializedName("video_id") val videoId: String?
-)
-
 data class VideoFormat(val quality: String, val label: String)
 
 data class FormatsResponse(
