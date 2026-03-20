@@ -21,6 +21,8 @@ jobs:
 
       - name: Run tests
         run: pytest backend/tests/ -v
+        env:
+          PYTHONPATH: .
 
   android-build:
     runs-on: ubuntu-latest
@@ -32,6 +34,8 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Build Android app
         working-directory: shield-app
-        run: ./gradlew build
+        run: gradle build

@@ -93,6 +93,10 @@ GET  /api/sponsorblock/:id        # SponsorBlock segments
 - **LAN-only by default.** Shared secret header authenticates requests.
 - **Two hosting targets:** Synology NAS (always-on, weak CPU) and Lenovo laptop with WSL2 (powerful, temporary).
 
+## Git Commit Authorship
+
+When creating git commits, always use the repository's configured `user.name` and `user.email`. Never set `--author` or `GIT_AUTHOR_*` environment variables.
+
 ## Development Phases
 
 1. **Walking Skeleton** — Single hardcoded video plays on Shield with HDR passthrough
