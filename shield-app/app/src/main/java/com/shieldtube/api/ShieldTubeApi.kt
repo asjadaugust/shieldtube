@@ -13,6 +13,9 @@ interface ShieldTubeApi {
     @GET("/api/feed/subscriptions")
     suspend fun getFeedSubscriptions(): FeedResponse
 
+    @GET("/api/feed/watch-later")
+    suspend fun getFeedWatchLater(): FeedResponse
+
     @GET("/api/search")
     suspend fun search(@Query("q") query: String): FeedResponse
 

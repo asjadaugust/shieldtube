@@ -23,13 +23,15 @@ class BrowseFragment : BrowseSupportFragment() {
     companion object {
         private const val HEADER_HOME = 0L
         private const val HEADER_SUBSCRIPTIONS = 1L
+        private const val HEADER_WATCH_LATER = 2L
     }
 
-    // Top-level adapter holds the two rows
+    // Top-level adapter holds the three rows
     private lateinit var rowsAdapter: ArrayObjectAdapter
     // Per-row content adapters
     private val homeAdapter = ArrayObjectAdapter(CardPresenter())
     private val subsAdapter = ArrayObjectAdapter(CardPresenter())
+    private val watchLaterAdapter = ArrayObjectAdapter(CardPresenter())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,9 +77,11 @@ class BrowseFragment : BrowseSupportFragment() {
 
         val homeHeader = HeaderItem(HEADER_HOME, "Home")
         val subsHeader = HeaderItem(HEADER_SUBSCRIPTIONS, "Subscriptions")
+        val watchLaterHeader = HeaderItem(HEADER_WATCH_LATER, "Watch Later")
 
         rowsAdapter.add(ListRow(homeHeader, homeAdapter))
         rowsAdapter.add(ListRow(subsHeader, subsAdapter))
+        rowsAdapter.add(ListRow(watchLaterHeader, watchLaterAdapter))
 
         adapter = rowsAdapter
     }
@@ -115,6 +119,7 @@ class BrowseFragment : BrowseSupportFragment() {
                 val feedResponse = when (headerId) {
                     HEADER_HOME -> ApiClient.api.getFeedHome()
                     HEADER_SUBSCRIPTIONS -> ApiClient.api.getFeedSubscriptions()
+                    HEADER_WATCH_LATER -> ApiClient.api.getFeedWatchLater()
                     else -> return@launch
                 }
                 updateRowContent(headerId, feedResponse.videos)
@@ -122,6 +127,7 @@ class BrowseFragment : BrowseSupportFragment() {
                 val message = when (headerId) {
                     HEADER_HOME -> "Couldn't load feed. Check your connection."
                     HEADER_SUBSCRIPTIONS -> "Couldn't load subscriptions. Check your connection."
+                    HEADER_WATCH_LATER -> "Couldn't load Watch Later. Check your connection."
                     else -> "Couldn't load feed. Check your connection."
                 }
                 Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
@@ -133,6 +139,7 @@ class BrowseFragment : BrowseSupportFragment() {
         val targetAdapter = when (headerId) {
             HEADER_HOME -> homeAdapter
             HEADER_SUBSCRIPTIONS -> subsAdapter
+            HEADER_WATCH_LATER -> watchLaterAdapter
             else -> return
         }
         targetAdapter.clear()
