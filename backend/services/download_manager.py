@@ -1,0 +1,197 @@
+"""DownloadManager — Phase 3a progressive download via FFmpeg fragmented MP4."""
+from __future__ import annotations
+
+import asyncio
+from asyncio.subprocess import DEVNULL, PIPE
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+import aiosqlite
+
+from backend.config import settings
+from backend.services.stream_resolver import resolve_stream
+
+
+@dataclass
+class DownloadState:
+    video_id: str
+    file_path: Path
+    expected_size: int
+    process: asyncio.subprocess.Process | None = None
+    status: str = "downloading"  # "downloading" | "cached" | "error"
+    error_message: str | None = None
+    started_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+
+class DownloadManager:
+    """Manages async FFmpeg downloads, tracks active state, updates DB."""
+
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        cache_dir: Path | None = None,
+    ) -> None:
+        self._db = db
+        self._cache_dir = Path(cache_dir) if cache_dir is not None else Path(settings.cache_dir)
+        self._active: dict[str, DownloadState] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def get_or_start_download(self, video_id: str) -> DownloadState:
+        """Return existing or start a new download.
+
+        Order of precedence:
+        1. File already exists on disk and not tracked → return cached state.
+        2. Download already active → return existing state.
+        3. Otherwise start a new download.
+        """
+        output_path = self._output_path(video_id)
+
+        # Fast path: file on disk, not currently tracked
+        if output_path.exists() and video_id not in self._active:
+            return DownloadState(
+                video_id=video_id,
+                file_path=output_path,
+                expected_size=output_path.stat().st_size,
+                process=None,
+                status="cached",
+            )
+
+        if video_id in self._active:
+            return self._active[video_id]
+
+        return await self._start_download(video_id)
+
+    def get_download_status(self, video_id: str) -> dict | None:
+        """Return progress dict for an active download, or None if unknown."""
+        state = self._active.get(video_id)
+        if state is None:
+            return None
+
+        bytes_downloaded = 0
+        if state.file_path.exists():
+            bytes_downloaded = state.file_path.stat().st_size
+
+        bytes_total = state.expected_size or 1
+        percent = (bytes_downloaded / bytes_total) * 100.0
+
+        return {
+            "status": state.status,
+            "bytes_downloaded": bytes_downloaded,
+            "bytes_total": state.expected_size,
+            "percent": percent,
+        }
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    async def _start_download(self, video_id: str) -> DownloadState:
+        """Acquire per-video lock, resolve stream, launch FFmpeg."""
+        if video_id not in self._locks:
+            self._locks[video_id] = asyncio.Lock()
+
+        async with self._locks[video_id]:
+            # Double-check: another coroutine may have raced us to the lock
+            if video_id in self._active:
+                return self._active[video_id]
+
+            # Resolve stream URLs without blocking the event loop
+            stream_info = await asyncio.to_thread(resolve_stream, video_id)
+
+            video_url: str = stream_info["video_url"]
+            audio_url: str | None = stream_info["audio_url"]
+            filesize: int = stream_info["filesize"]
+
+            output_path = self._output_path(video_id)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            cmd = ["ffmpeg", "-y", "-i", video_url]
+            if audio_url is not None:
+                cmd += ["-i", audio_url]
+            cmd += [
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-movflags", "+frag_keyframe+empty_moov",
+                "-f", "mp4",
+                str(output_path),
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=DEVNULL,
+                stderr=PIPE,
+            )
+
+            state = DownloadState(
+                video_id=video_id,
+                file_path=output_path,
+                expected_size=filesize,
+                process=process,
+                status="downloading",
+            )
+            self._active[video_id] = state
+
+            # Persist to DB
+            await self._db.execute(
+                "UPDATE videos SET cache_status = 'downloading', cached_video_path = ? WHERE id = ?",
+                (str(output_path), video_id),
+            )
+            await self._db.commit()
+
+            # Monitor in background
+            asyncio.create_task(self._monitor_download(video_id, process))
+
+            return state
+
+    async def _monitor_download(
+        self,
+        video_id: str,
+        process: asyncio.subprocess.Process,
+    ) -> None:
+        """Wait for FFmpeg to finish, then update state and DB."""
+        _, stderr = await process.communicate()
+
+        state = self._active.get(video_id)
+
+        if process.returncode == 0:
+            # Update to actual file size
+            actual_size = 0
+            if state is not None and state.file_path.exists():
+                actual_size = state.file_path.stat().st_size
+
+            if state is not None:
+                state.status = "cached"
+                state.expected_size = actual_size
+
+            await self._db.execute(
+                "UPDATE videos SET cache_status = 'cached' WHERE id = ?",
+                (video_id,),
+            )
+            await self._db.commit()
+        else:
+            error_tail = stderr[-500:].decode("utf-8", errors="replace") if stderr else ""
+
+            if state is not None:
+                state.status = "error"
+                state.error_message = error_tail
+
+            await self._db.execute(
+                "UPDATE videos SET cache_status = 'error' WHERE id = ?",
+                (video_id,),
+            )
+            await self._db.commit()
+
+        # Grace period then clean up tracking dicts
+        await asyncio.sleep(5)
+        self._active.pop(video_id, None)
+        self._locks.pop(video_id, None)
+
+    def _output_path(self, video_id: str) -> Path:
+        return self._cache_dir / f"{video_id}.mp4"
