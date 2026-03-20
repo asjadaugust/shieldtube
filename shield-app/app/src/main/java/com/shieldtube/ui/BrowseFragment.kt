@@ -91,11 +91,12 @@ class BrowseFragment : BrowseSupportFragment() {
                 }
                 updateRowContent(headerId, feedResponse.videos)
             } catch (e: Exception) {
-                Toast.makeText(
-                    requireContext(),
-                    "Failed to load feed: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                val message = when (headerId) {
+                    HEADER_HOME -> "Couldn't load feed. Check your connection."
+                    HEADER_SUBSCRIPTIONS -> "Couldn't load subscriptions. Check your connection."
+                    else -> "Couldn't load feed. Check your connection."
+                }
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
             }
         }
     }

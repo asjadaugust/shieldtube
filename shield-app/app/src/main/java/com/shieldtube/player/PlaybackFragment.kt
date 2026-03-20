@@ -134,74 +134,80 @@ class PlaybackFragment : Fragment() {
             return
         }
 
-        this.videoId = videoId
+        try {
+            this.videoId = videoId
 
-        val renderersFactory = DefaultRenderersFactory(requireContext())
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            val renderersFactory = DefaultRenderersFactory(requireContext())
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
-        player = ExoPlayer.Builder(requireContext(), renderersFactory)
-            .build()
-            .also { exoPlayer ->
-                playerView?.player = exoPlayer
+            player = ExoPlayer.Builder(requireContext(), renderersFactory)
+                .build()
+                .also { exoPlayer ->
+                    playerView?.player = exoPlayer
 
-                val streamUrl = "$BACKEND_HOST/api/video/$videoId/stream"
-                val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
-                exoPlayer.setMediaItem(mediaItem)
+                    val streamUrl = "$BACKEND_HOST/api/video/$videoId/stream"
+                    val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
+                    exoPlayer.setMediaItem(mediaItem)
 
-                // Fetch resume position and chapters (don't block playback if it fails)
-                lifecycleScope.launch {
-                    try {
-                        val meta = ApiClient.api.getVideoMeta(videoId)
-                        if (meta.lastPositionSeconds > 0) {
-                            exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
+                    // Fetch resume position and chapters (don't block playback if it fails)
+                    lifecycleScope.launch {
+                        try {
+                            val meta = ApiClient.api.getVideoMeta(videoId)
+                            if (meta.lastPositionSeconds > 0) {
+                                exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
+                            }
+                            // Populate chapters and start chapter checking if non-empty
+                            chapters = meta.chapters
+                            if (chapters.isNotEmpty()) {
+                                startChapterChecking(exoPlayer)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch resume position/chapters: ${e.message}")
                         }
-                        // Populate chapters and start chapter checking if non-empty
-                        chapters = meta.chapters
-                        if (chapters.isNotEmpty()) {
-                            startChapterChecking(exoPlayer)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch resume position/chapters: ${e.message}")
                     }
-                }
 
-                exoPlayer.playWhenReady = true
-                exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                    exoPlayer.prepare()
 
-                // Start periodic progress reporting
-                startProgressReporting(videoId, exoPlayer)
+                    // Start periodic progress reporting
+                    startProgressReporting(videoId, exoPlayer)
 
-                // Fetch SponsorBlock segments
-                lifecycleScope.launch {
-                    try {
-                        val response = ApiClient.api.getSponsorSegments(videoId)
-                        sponsorSegments = response.segments
-                        if (sponsorSegments.isNotEmpty()) {
-                            startSkipChecking(exoPlayer)
+                    // Fetch SponsorBlock segments
+                    lifecycleScope.launch {
+                        try {
+                            val response = ApiClient.api.getSponsorSegments(videoId)
+                            sponsorSegments = response.segments
+                            if (sponsorSegments.isNotEmpty()) {
+                                startSkipChecking(exoPlayer)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch sponsor segments: ${e.message}")
                         }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch sponsor segments: ${e.message}")
                     }
-                }
 
-                // Detect manual seeks to suppress auto-skip
-                exoPlayer.addListener(object : Player.Listener {
-                    override fun onPositionDiscontinuity(
-                        oldPosition: Player.PositionInfo,
-                        newPosition: Player.PositionInfo,
-                        reason: Int
-                    ) {
-                        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
-                            userSeekedRecently = true
-                            // Reset after 2 seconds
-                            lifecycleScope.launch {
-                                delay(2000)
-                                userSeekedRecently = false
+                    // Detect manual seeks to suppress auto-skip
+                    exoPlayer.addListener(object : Player.Listener {
+                        override fun onPositionDiscontinuity(
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
+                            reason: Int
+                        ) {
+                            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                                userSeekedRecently = true
+                                // Reset after 2 seconds
+                                lifecycleScope.launch {
+                                    delay(2000)
+                                    userSeekedRecently = false
+                                }
                             }
                         }
-                    }
-                })
-            }
+                    })
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start playback: ${e.message}")
+            Toast.makeText(requireContext(), "Video unavailable", Toast.LENGTH_SHORT).show()
+            parentFragmentManager.popBackStack()
+        }
     }
 
     private fun startProgressReporting(videoId: String, exoPlayer: ExoPlayer) {

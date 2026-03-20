@@ -77,7 +77,7 @@ class SearchFragment : SearchSupportFragment(), SearchSupportFragment.SearchResu
             } catch (e: Exception) {
                 Toast.makeText(
                     requireContext(),
-                    "Search failed: ${e.message}",
+                    "Search unavailable. Try again.",
                     Toast.LENGTH_SHORT
                 ).show()
             }
