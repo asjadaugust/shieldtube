@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pathlib import Path
 
 from backend.config import settings
+from backend.db.database import get_db
 from backend.services.stream_resolver import resolve_stream
 from backend.services.muxer import mux_streams
+from backend.services.thumbnail_cache import ThumbnailCache
 
 router = APIRouter()
 
@@ -68,3 +70,20 @@ async def stream_video(video_id: str, request: Request):
         media_type="video/mp4",
         headers={"Accept-Ranges": "bytes"},
     )
+
+
+@router.get("/video/{video_id}/thumbnail")
+async def get_thumbnail(
+    video_id: str,
+    res: str = Query(default="maxres"),
+):
+    """Return cached thumbnail (200 FileResponse) or redirect to YouTube CDN (302)."""
+    db = await get_db()
+    cache = ThumbnailCache(db)
+    local_path = await cache.get_thumbnail_path(video_id, resolution=res)
+
+    if local_path is not None:
+        return FileResponse(local_path, media_type="image/jpeg")
+
+    youtube_url = ThumbnailCache.get_youtube_thumbnail_url(video_id, resolution=res)
+    return RedirectResponse(status_code=302, url=youtube_url)
