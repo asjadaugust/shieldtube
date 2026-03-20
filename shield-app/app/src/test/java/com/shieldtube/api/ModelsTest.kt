@@ -157,4 +157,95 @@ class ModelsTest {
         val response = gson.fromJson(json, SponsorResponse::class.java)
         assertTrue(response.segments.isEmpty())
     }
+
+    @Test
+    fun `deserialize Chapter from backend JSON`() {
+        val json = """
+        {
+            "title": "Intro",
+            "start_time": 0.0,
+            "end_time": 30.5
+        }
+        """.trimIndent()
+
+        val chapter = gson.fromJson(json, Chapter::class.java)
+
+        assertEquals("Intro", chapter.title)
+        assertEquals(0.0, chapter.startTime, 0.001)
+        assertEquals(30.5, chapter.endTime, 0.001)
+    }
+
+    @Test
+    fun `deserialize VideoMeta with chapters`() {
+        val json = """
+        {
+            "id": "dQw4w9WgXcQ",
+            "title": "Never Gonna Give You Up",
+            "channel_name": "Rick Astley",
+            "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+            "duration": 212,
+            "cache_status": "cached",
+            "last_position_seconds": 0,
+            "chapters": [
+                {"title": "Intro", "start_time": 0.0, "end_time": 30.0},
+                {"title": "Main Content", "start_time": 30.0, "end_time": 180.0},
+                {"title": "Outro", "start_time": 180.0, "end_time": 212.0}
+            ]
+        }
+        """.trimIndent()
+
+        val meta = gson.fromJson(json, VideoMeta::class.java)
+
+        assertEquals("dQw4w9WgXcQ", meta.id)
+        assertEquals(3, meta.chapters.size)
+        assertEquals("Intro", meta.chapters[0].title)
+        assertEquals(0.0, meta.chapters[0].startTime, 0.001)
+        assertEquals(30.0, meta.chapters[0].endTime, 0.001)
+        assertEquals("Main Content", meta.chapters[1].title)
+        assertEquals(30.0, meta.chapters[1].startTime, 0.001)
+        assertEquals("Outro", meta.chapters[2].title)
+        assertEquals(212.0, meta.chapters[2].endTime, 0.001)
+    }
+
+    @Test
+    fun `VideoMeta without chapters defaults to empty list`() {
+        val json = """
+        {
+            "id": "test",
+            "title": "Test",
+            "channel_name": "Ch",
+            "channel_id": "UC",
+            "duration": null,
+            "cache_status": null,
+            "last_position_seconds": 0
+        }
+        """.trimIndent()
+
+        val meta = gson.fromJson(json, VideoMeta::class.java)
+
+        // When chapters field is absent from JSON, should default to empty list
+        assertNotNull(meta.chapters)
+        assertTrue(meta.chapters.isEmpty())
+    }
+
+    @Test
+    fun `VideoMeta with empty chapters array`() {
+        val json = """
+        {
+            "id": "test",
+            "title": "Test",
+            "channel_name": "Ch",
+            "channel_id": "UC",
+            "duration": 120,
+            "cache_status": "none",
+            "last_position_seconds": 0,
+            "chapters": []
+        }
+        """.trimIndent()
+
+        val meta = gson.fromJson(json, VideoMeta::class.java)
+
+        assertNotNull(meta.chapters)
+        assertTrue(meta.chapters.isEmpty())
+    }
 }

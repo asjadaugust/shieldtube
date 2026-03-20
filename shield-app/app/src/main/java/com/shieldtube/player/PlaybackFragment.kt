@@ -1,11 +1,16 @@
 package com.shieldtube.player
 
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -15,6 +20,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.shieldtube.api.ApiClient
+import com.shieldtube.api.Chapter
 import com.shieldtube.api.ProgressBody
 import com.shieldtube.api.SponsorSegment
 import kotlinx.coroutines.*
@@ -44,18 +50,70 @@ class PlaybackFragment : Fragment() {
     private var skipCheckJob: Job? = null
     private var userSeekedRecently = false
 
+    // Chapter marker state
+    private var chapters: List<Chapter> = emptyList()
+    private var currentChapterIndex: Int = -1
+    private var chapterCheckJob: Job? = null
+    private var chapterOverlay: TextView? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         playerView = PlayerView(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        // Chapter title overlay: semi-transparent black background, white text, top-left
+        val overlay = TextView(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.START
+            ).also { params ->
+                params.setMargins(48, 48, 48, 0)
+            }
+            setBackgroundColor(Color.parseColor("#99000000"))
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setPadding(24, 12, 24, 12)
+            visibility = View.GONE
+        }
+        chapterOverlay = overlay
+
+        val container = FrameLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            isFocusable = true
+            isFocusableInTouchMode = true
+            addView(playerView)
+            addView(overlay)
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    when {
+                        keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && event.isLongPress -> {
+                            jumpToNextChapter()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.isLongPress -> {
+                            jumpToPreviousChapter()
+                            true
+                        }
+                        else -> false
+                    }
+                } else {
+                    false
+                }
+            }
         }
-        return playerView!!
+
+        return container
     }
 
     override fun onStart() {
@@ -90,15 +148,20 @@ class PlaybackFragment : Fragment() {
                 val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
                 exoPlayer.setMediaItem(mediaItem)
 
-                // Fetch resume position (don't block playback if it fails)
+                // Fetch resume position and chapters (don't block playback if it fails)
                 lifecycleScope.launch {
                     try {
                         val meta = ApiClient.api.getVideoMeta(videoId)
                         if (meta.lastPositionSeconds > 0) {
                             exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
                         }
+                        // Populate chapters and start chapter checking if non-empty
+                        chapters = meta.chapters
+                        if (chapters.isNotEmpty()) {
+                            startChapterChecking(exoPlayer)
+                        }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch resume position: ${e.message}")
+                        Log.w(TAG, "Failed to fetch resume position/chapters: ${e.message}")
                     }
                 }
 
@@ -196,6 +259,71 @@ class PlaybackFragment : Fragment() {
         }
     }
 
+    /**
+     * Poll player position every second, show chapter title overlay when chapter changes,
+     * and fade the overlay out after 3 seconds of showing.
+     */
+    private fun startChapterChecking(exoPlayer: ExoPlayer) {
+        chapterCheckJob = lifecycleScope.launch {
+            var overlayHideJob: Job? = null
+            while (isActive) {
+                delay(1_000)
+                val positionSec = exoPlayer.currentPosition / 1000.0
+                val newIndex = chapters.indexOfLast { it.startTime <= positionSec }
+                if (newIndex != currentChapterIndex && newIndex >= 0) {
+                    currentChapterIndex = newIndex
+                    val chapterTitle = chapters[newIndex].title
+
+                    // Show overlay
+                    chapterOverlay?.text = chapterTitle
+                    chapterOverlay?.visibility = View.VISIBLE
+
+                    // Cancel any pending hide and schedule a new one
+                    overlayHideJob?.cancel()
+                    overlayHideJob = launch {
+                        delay(3_000)
+                        chapterOverlay?.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Seek to the start of the next chapter, if any.
+     */
+    fun jumpToNextChapter() {
+        val exoPlayer = player ?: return
+        if (chapters.isEmpty()) return
+        val positionSec = exoPlayer.currentPosition / 1000.0
+        val nextChapter = chapters.firstOrNull { it.startTime > positionSec + 1.0 }
+        if (nextChapter != null) {
+            exoPlayer.seekTo((nextChapter.startTime * 1000).toLong())
+        }
+    }
+
+    /**
+     * Seek to the start of the previous chapter (or beginning of current if near start).
+     */
+    fun jumpToPreviousChapter() {
+        val exoPlayer = player ?: return
+        if (chapters.isEmpty()) return
+        val positionSec = exoPlayer.currentPosition / 1000.0
+        // If more than 3 seconds into current chapter, go to its start; otherwise go to previous
+        val currentIdx = chapters.indexOfLast { it.startTime <= positionSec }
+        if (currentIdx > 0) {
+            val currentChapterStart = chapters[currentIdx].startTime
+            val targetChapter = if (positionSec - currentChapterStart > 3.0) {
+                chapters[currentIdx]
+            } else {
+                chapters[currentIdx - 1]
+            }
+            exoPlayer.seekTo((targetChapter.startTime * 1000).toLong())
+        } else if (currentIdx == 0) {
+            exoPlayer.seekTo((chapters[0].startTime * 1000).toLong())
+        }
+    }
+
     private fun releasePlayer() {
         // Send final progress report
         videoId?.let { vid ->
@@ -221,9 +349,14 @@ class PlaybackFragment : Fragment() {
         progressJob = null
         skipCheckJob?.cancel()
         skipCheckJob = null
+        chapterCheckJob?.cancel()
+        chapterCheckJob = null
         sponsorSegments = emptyList()
         skippedSegmentIndices.clear()
         userSeekedRecently = false
+        chapters = emptyList()
+        currentChapterIndex = -1
+        chapterOverlay = null
         player?.release()
         player = null
     }

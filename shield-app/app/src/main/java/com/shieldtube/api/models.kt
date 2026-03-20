@@ -25,6 +25,12 @@ data class ProgressBody(
     val duration: Int
 )
 
+data class Chapter(
+    val title: String,
+    @SerializedName("start_time") val startTime: Double,
+    @SerializedName("end_time") val endTime: Double
+)
+
 data class VideoMeta(
     val id: String,
     val title: String,
@@ -32,7 +38,8 @@ data class VideoMeta(
     @SerializedName("channel_id") val channelId: String,
     val duration: Int?,
     @SerializedName("cache_status") val cacheStatus: String?,
-    @SerializedName("last_position_seconds") val lastPositionSeconds: Int
+    @SerializedName("last_position_seconds") val lastPositionSeconds: Int,
+    val chapters: List<Chapter> = emptyList()
 )
 
 data class SponsorSegment(
