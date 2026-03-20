@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from backend.db.database import init_db, close_db, get_db
 from backend.config import settings
+from backend.services.download_manager import DownloadManager
 
 
 @asynccontextmanager
@@ -27,11 +28,15 @@ async def lifespan(app: FastAPI):
                 scopes="youtube.readonly youtube.force-ssl openid email",
             ))
 
+    # Initialize download manager
+    db = await get_db()
+    app.state.download_manager = DownloadManager(db)
+
     yield
     await close_db()
 
 
-app = FastAPI(title="ShieldTube API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="ShieldTube API", version="0.3.0", lifespan=lifespan)
 
 from backend.api.routers import video, feed, search, auth, watch  # noqa: E402
 

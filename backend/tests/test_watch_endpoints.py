@@ -36,6 +36,7 @@ async def client(mem_db):
     with (
         patch("backend.db.database.init_db", new_callable=AsyncMock),
         patch("backend.db.database.close_db", new_callable=AsyncMock),
+        patch("backend.db.database.get_db", new=_fake_get_db),
         patch("backend.api.routers.watch.get_db", new=_fake_get_db),
     ):
         transport = ASGITransport(app=app)
