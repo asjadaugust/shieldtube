@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -64,6 +65,11 @@ class PlaybackFragment : Fragment() {
     private var currentSubtitleLang: String? = null
     private var subtitleOverlay: LinearLayout? = null
     private var subtitleOverlayVisible: Boolean = false
+
+    // Playback speed state
+    private var currentSpeed: Float = 1.0f
+    private var speedOverlay: LinearLayout? = null
+    private val SPEED_OPTIONS = floatArrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -120,6 +126,29 @@ class PlaybackFragment : Fragment() {
             addView(playerView)
             addView(overlay)
             addView(subtitleMenu)
+            speedOverlay = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.parseColor("#CC000000"))
+                setPadding(32, 16, 32, 16)
+                visibility = View.GONE
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER_VERTICAL or Gravity.END
+                ).apply { setMargins(0, 0, 32, 0) }
+                SPEED_OPTIONS.forEach { speed ->
+                    addView(TextView(context).apply {
+                        text = "${speed}x"
+                        textSize = 18f
+                        setPadding(24, 12, 24, 12)
+                        setTextColor(if (speed == currentSpeed) Color.parseColor("#e94560") else Color.WHITE)
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        setOnClickListener { selectSpeed(speed) }
+                    })
+                }
+            }
+            addView(speedOverlay)
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     when {
@@ -133,6 +162,10 @@ class PlaybackFragment : Fragment() {
                         }
                         keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.isLongPress -> {
                             toggleSubtitleOverlay()
+                            true
+                        }
+                        keyCode == KeyEvent.KEYCODE_DPAD_UP && event.isLongPress -> {
+                            toggleSpeedOverlay()
                             true
                         }
                         keyCode == KeyEvent.KEYCODE_BACK && subtitleOverlayVisible -> {
@@ -460,6 +493,32 @@ class PlaybackFragment : Fragment() {
         Toast.makeText(requireContext(), "Subtitles: $trackLabel", Toast.LENGTH_SHORT).show()
     }
 
+    private fun toggleSpeedOverlay() {
+        speedOverlay?.let { overlay ->
+            if (overlay.visibility == View.VISIBLE) {
+                overlay.visibility = View.GONE
+            } else {
+                overlay.visibility = View.VISIBLE
+                val currentIndex = SPEED_OPTIONS.indexOf(currentSpeed)
+                if (currentIndex >= 0) overlay.getChildAt(currentIndex)?.requestFocus()
+            }
+        }
+    }
+
+    private fun selectSpeed(speed: Float) {
+        currentSpeed = speed
+        player?.setPlaybackParameters(PlaybackParameters(speed))
+        speedOverlay?.let { overlay ->
+            for (i in 0 until overlay.childCount) {
+                (overlay.getChildAt(i) as? TextView)?.setTextColor(
+                    if (SPEED_OPTIONS[i] == speed) Color.parseColor("#e94560") else Color.WHITE
+                )
+            }
+        }
+        Toast.makeText(requireContext(), "Speed: ${speed}x", Toast.LENGTH_SHORT).show()
+        speedOverlay?.visibility = View.GONE
+    }
+
     private fun releasePlayer() {
         // Send final progress report
         videoId?.let { vid ->
@@ -497,6 +556,9 @@ class PlaybackFragment : Fragment() {
         currentSubtitleLang = null
         subtitleOverlay = null
         subtitleOverlayVisible = false
+        currentSpeed = 1.0f
+        speedOverlay?.visibility = View.GONE
+        speedOverlay = null
         player?.release()
         player = null
     }
