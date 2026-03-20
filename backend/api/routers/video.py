@@ -1,11 +1,12 @@
 import asyncio
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pathlib import Path
 
 from backend.config import settings
 from backend.db.database import get_db
 from backend.services.sponsorblock import get_segments
+from backend.services.subtitle_cache import get_or_download_subtitle
 from backend.services.thumbnail_cache import ThumbnailCache
 
 router = APIRouter()
@@ -123,6 +124,48 @@ async def get_sponsor_segments(video_id: str):
         "video_id": video_id,
         "segments": segments,
     }
+
+
+@router.get("/video/{video_id}/subtitles")
+async def list_subtitles(video_id: str):
+    """List available subtitle languages for a video."""
+    from backend.services.stream_resolver import resolve_stream
+
+    try:
+        stream_info = await asyncio.to_thread(resolve_stream, video_id)
+        subs = stream_info.get("subtitles", {})
+        return {
+            "video_id": video_id,
+            "tracks": [
+                {
+                    "lang": lang,
+                    "name": info.get("name", lang),
+                    "auto": info.get("auto", False),
+                }
+                for lang, info in subs.items()
+            ],
+        }
+    except Exception:
+        return {"video_id": video_id, "tracks": []}
+
+
+@router.get("/video/{video_id}/subtitles/{lang}")
+async def get_subtitle(video_id: str, lang: str):
+    """Serve a subtitle file (WebVTT)."""
+    from backend.services.stream_resolver import resolve_stream
+
+    try:
+        stream_info = await asyncio.to_thread(resolve_stream, video_id)
+        subs = stream_info.get("subtitles", {})
+        if lang not in subs:
+            return JSONResponse({"error": "Subtitle not found"}, status_code=404)
+
+        local_path = await get_or_download_subtitle(video_id, lang, subs[lang]["url"])
+        if local_path and local_path.exists():
+            return FileResponse(local_path, media_type="text/vtt")
+        return JSONResponse({"error": "Failed to download subtitle"}, status_code=503)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # Thumbnail endpoint — unchanged
