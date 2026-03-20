@@ -123,4 +123,38 @@ class ModelsTest {
         assertEquals(0, meta.lastPositionSeconds)
         assertNull(meta.duration)
     }
+
+    @Test
+    fun `deserialize SponsorResponse from backend JSON`() {
+        val json = """
+        {
+            "video_id": "dQw4w9WgXcQ",
+            "segments": [
+                {"start": 30.5, "end": 60.2, "category": "sponsor"},
+                {"start": 180.0, "end": 195.5, "category": "intro"}
+            ]
+        }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SponsorResponse::class.java)
+
+        assertEquals("dQw4w9WgXcQ", response.videoId)
+        assertEquals(2, response.segments.size)
+        assertEquals(30.5, response.segments[0].start, 0.01)
+        assertEquals(60.2, response.segments[0].end, 0.01)
+        assertEquals("sponsor", response.segments[0].category)
+    }
+
+    @Test
+    fun `deserialize SponsorResponse with empty segments`() {
+        val json = """
+        {
+            "video_id": "test",
+            "segments": []
+        }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SponsorResponse::class.java)
+        assertTrue(response.segments.isEmpty())
+    }
 }
