@@ -72,4 +72,55 @@ class ModelsTest {
         assertNull(video.duration)
         assertNull(video.publishedAt)
     }
+
+    @Test
+    fun `deserialize VideoMeta from backend JSON`() {
+        val json = """
+        {
+            "id": "dQw4w9WgXcQ",
+            "title": "Never Gonna Give You Up",
+            "channel_name": "Rick Astley",
+            "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
+            "duration": 212,
+            "cache_status": "cached",
+            "last_position_seconds": 120
+        }
+        """.trimIndent()
+
+        val meta = gson.fromJson(json, VideoMeta::class.java)
+
+        assertEquals("dQw4w9WgXcQ", meta.id)
+        assertEquals("Rick Astley", meta.channelName)
+        assertEquals(212, meta.duration)
+        assertEquals("cached", meta.cacheStatus)
+        assertEquals(120, meta.lastPositionSeconds)
+    }
+
+    @Test
+    fun `serialize ProgressBody to JSON`() {
+        val body = ProgressBody(positionSeconds = 180, duration = 600)
+        val json = gson.toJson(body)
+
+        assertTrue(json.contains("\"position_seconds\":180"))
+        assertTrue(json.contains("\"duration\":600"))
+    }
+
+    @Test
+    fun `VideoMeta handles zero position`() {
+        val json = """
+        {
+            "id": "test",
+            "title": "Test",
+            "channel_name": "Ch",
+            "channel_id": "UC",
+            "duration": null,
+            "cache_status": null,
+            "last_position_seconds": 0
+        }
+        """.trimIndent()
+
+        val meta = gson.fromJson(json, VideoMeta::class.java)
+        assertEquals(0, meta.lastPositionSeconds)
+        assertNull(meta.duration)
+    }
 }
