@@ -6,11 +6,13 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
+from backend.api.middleware import SharedSecretMiddleware
 from backend.db.database import init_db, close_db, get_db
 from backend.config import settings
 from backend.services.download_manager import DownloadManager
 from backend.services.download_queue import DownloadQueue
 from backend.services.feed_refresher import FeedRefresher
+from backend.services.ytdlp_updater import periodic_ytdlp_update
 
 
 @asynccontextmanager
@@ -48,8 +50,15 @@ async def lifespan(app: FastAPI):
     await refresher.start()
     app.state.feed_refresher = refresher
 
+    # Start periodic yt-dlp updater (weekly)
+    import asyncio
+    ytdlp_task = asyncio.create_task(periodic_ytdlp_update())
+    app.state.ytdlp_update_task = ytdlp_task
+
     yield
 
+    if hasattr(app.state, "ytdlp_update_task"):
+        app.state.ytdlp_update_task.cancel()
     if hasattr(app.state, "feed_refresher"):
         await app.state.feed_refresher.stop()
     if hasattr(app.state, "download_queue"):
@@ -58,6 +67,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ShieldTube API", version="0.3.0", lifespan=lifespan)
+app.add_middleware(SharedSecretMiddleware, secret=settings.api_secret)
 
 
 @app.exception_handler(httpx.TimeoutException)
