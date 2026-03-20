@@ -1,37 +1,36 @@
-from fastapi import APIRouter, Depends, Query, Request
+import asyncio
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pathlib import Path
 
 from backend.config import settings
 from backend.db.database import get_db
-from backend.services.stream_resolver import resolve_stream
-from backend.services.muxer import mux_streams
 from backend.services.thumbnail_cache import ThumbnailCache
 
 router = APIRouter()
 
 
-async def get_or_create_stream(video_id: str) -> Path:
-    """Resolve, mux, and cache a video. Return path to cached MP4."""
-    cache_path = Path(settings.cache_dir) / "videos" / f"{video_id}.mp4"
-
-    if cache_path.exists():
-        return cache_path
-
-    stream_info = resolve_stream(video_id)
-    mux_streams(
-        video_url=stream_info["video_url"],
-        audio_url=stream_info["audio_url"],
-        output_path=cache_path,
-    )
-    return cache_path
-
-
 @router.get("/video/{video_id}/stream")
 async def stream_video(video_id: str, request: Request):
-    """Serve video with HTTP range-request support."""
-    video_path = await get_or_create_stream(video_id)
-    file_size = video_path.stat().st_size
+    """Serve video with HTTP range-request support. Supports growing files during download."""
+    dm = request.app.state.download_manager
+    state = await dm.get_or_start_download(video_id)
+
+    video_path = state.file_path
+    total_size = state.expected_size
+
+    # Wait briefly for file to start being written by FFmpeg
+    if not video_path.exists():
+        for _ in range(50):  # 5 seconds max
+            await asyncio.sleep(0.1)
+            if video_path.exists():
+                break
+        if not video_path.exists():
+            return StreamingResponse(
+                iter([b""]),
+                status_code=503,
+                headers={"Retry-After": "5"},
+            )
 
     range_header = request.headers.get("range")
 
@@ -39,51 +38,89 @@ async def stream_video(video_id: str, request: Request):
         range_spec = range_header.replace("bytes=", "")
         parts = range_spec.split("-")
         range_start = int(parts[0]) if parts[0] else 0
-        range_end = int(parts[1]) if parts[1] else file_size - 1
-
+        range_end = int(parts[1]) if parts[1] else total_size - 1
         content_length = range_end - range_start + 1
 
-        def iter_range():
-            with open(video_path, "rb") as f:
-                f.seek(range_start)
-                remaining = content_length
-                while remaining > 0:
-                    chunk = f.read(min(8192, remaining))
-                    if not chunk:
-                        break
-                    remaining -= len(chunk)
-                    yield chunk
-
         return StreamingResponse(
-            iter_range(),
+            _iter_growing_file(video_path, range_start, range_end, state),
             status_code=206,
             headers={
-                "Content-Range": f"bytes {range_start}-{range_end}/{file_size}",
+                "Content-Range": f"bytes {range_start}-{range_end}/{total_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(content_length),
                 "Content-Type": "video/mp4",
             },
         )
 
-    return FileResponse(
-        video_path,
-        media_type="video/mp4",
-        headers={"Accept-Ranges": "bytes"},
+    # Non-range request
+    if state.status == "cached":
+        return FileResponse(
+            video_path,
+            media_type="video/mp4",
+            headers={"Accept-Ranges": "bytes"},
+        )
+
+    # Growing file — stream all bytes with expected Content-Length
+    return StreamingResponse(
+        _iter_growing_file(video_path, 0, total_size - 1, state),
+        status_code=200,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total_size),
+            "Content-Type": "video/mp4",
+        },
     )
 
 
+async def _iter_growing_file(file_path: Path, start: int, end: int, state):
+    """Async generator that reads from a growing file, waiting for FFmpeg writes."""
+    position = start
+    target = end + 1
+    timeout = settings.download_wait_timeout
+
+    while position < target:
+        file_size = file_path.stat().st_size if file_path.exists() else 0
+
+        if position < file_size:
+            # Bytes available — read and yield
+            readable = min(file_size - position, target - position, 65536)
+            with open(file_path, "rb") as f:
+                f.seek(position)
+                chunk = f.read(readable)
+            if chunk:
+                yield chunk
+                position += len(chunk)
+        elif state.status == "cached":
+            # Download finished — check if more bytes available
+            final_size = file_path.stat().st_size if file_path.exists() else 0
+            if position < final_size:
+                continue
+            break
+        elif state.status == "error":
+            break
+        else:
+            # Bytes not yet available — wait for FFmpeg to write more
+            waited = 0.0
+            while waited < timeout:
+                await asyncio.sleep(0.1)
+                waited += 0.1
+                new_size = file_path.stat().st_size if file_path.exists() else 0
+                if new_size > position or state.status in ("cached", "error"):
+                    break
+            # Check if we got new bytes
+            if (file_path.stat().st_size if file_path.exists() else 0) <= position:
+                if state.status != "cached":
+                    break  # Timeout
+
+
+# Thumbnail endpoint — unchanged
 @router.get("/video/{video_id}/thumbnail")
-async def get_thumbnail(
-    video_id: str,
-    res: str = Query(default="maxres"),
-):
+async def get_thumbnail(video_id: str, res: str = Query(default="maxres")):
     """Return cached thumbnail (200 FileResponse) or redirect to YouTube CDN (302)."""
     db = await get_db()
     cache = ThumbnailCache(db)
     local_path = await cache.get_thumbnail_path(video_id, resolution=res)
-
     if local_path is not None:
         return FileResponse(local_path, media_type="image/jpeg")
-
     youtube_url = ThumbnailCache.get_youtube_thumbnail_url(video_id, resolution=res)
     return RedirectResponse(status_code=302, url=youtube_url)
