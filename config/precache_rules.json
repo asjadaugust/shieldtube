@@ -1,0 +1,11 @@
+{
+  "precache_rules": [
+    {
+      "type": "channel",
+      "channel_id": "EXAMPLE_CHANNEL_ID",
+      "max_videos": 5,
+      "quality": "1080p",
+      "trigger": "on_upload"
+    }
+  ]
+}
