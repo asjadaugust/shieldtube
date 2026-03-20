@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShieldTube Dashboard</title>
+    <link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+    <header>
+        <h1>ShieldTube</h1>
+        <div id="system-status"></div>
+    </header>
+
+    <main>
+        <section id="cache-section">
+            <h2>Cache Management</h2>
+            <div id="cache-stats"></div>
+            <div id="cache-videos"></div>
+        </section>
+
+        <section id="rules-section">
+            <h2>Pre-cache Rules</h2>
+            <div id="rules-list"></div>
+            <button onclick="addRule()">+ Add Rule</button>
+        </section>
+    </main>
+
+    <script src="/dashboard/app.js"></script>
+</body>
+</html>
