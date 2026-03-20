@@ -34,3 +34,14 @@ data class VideoMeta(
     @SerializedName("cache_status") val cacheStatus: String?,
     @SerializedName("last_position_seconds") val lastPositionSeconds: Int
 )
+
+data class SponsorSegment(
+    val start: Double,
+    val end: Double,
+    val category: String
+)
+
+data class SponsorResponse(
+    @SerializedName("video_id") val videoId: String,
+    val segments: List<SponsorSegment>
+)
