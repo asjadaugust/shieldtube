@@ -54,6 +54,29 @@ def test_resolve_stream_prefers_hdr_format(mock_yt_dlp_info):
         assert "vp09.02" in opts["format"]
 
 
+def test_resolve_stream_single_stream_fallback():
+    """When yt-dlp falls back to 'best' (pre-muxed), requested_formats is absent."""
+    single_stream_info = {
+        "url": "https://rr1.example.com/best.mp4",
+        "duration": 180,
+        "title": "Single Stream Video",
+        "id": "abc123",
+    }
+
+    with patch("backend.services.stream_resolver.yt_dlp.YoutubeDL") as mock_cls:
+        instance = MagicMock()
+        instance.extract_info.return_value = single_stream_info
+        mock_cls.return_value.__enter__ = MagicMock(return_value=instance)
+        mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = resolve_stream("abc123")
+
+        assert result["video_url"] == "https://rr1.example.com/best.mp4"
+        assert result["audio_url"] is None
+        assert result["duration"] == 180
+        assert result["title"] == "Single Stream Video"
+
+
 def test_resolve_stream_non_hdr_fallback(mock_yt_dlp_info):
     with patch("backend.services.stream_resolver.yt_dlp.YoutubeDL") as mock_cls:
         instance = MagicMock()

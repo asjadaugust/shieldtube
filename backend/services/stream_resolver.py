@@ -26,9 +26,16 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
             f"https://www.youtube.com/watch?v={video_id}",
             download=False,
         )
+        if "requested_formats" in info:
+            video_url = info["requested_formats"][0]["url"]
+            audio_url = info["requested_formats"][1]["url"]
+        else:
+            video_url = info["url"]
+            audio_url = None
+
         return {
-            "video_url": info["requested_formats"][0]["url"],
-            "audio_url": info["requested_formats"][1]["url"],
+            "video_url": video_url,
+            "audio_url": audio_url,
             "duration": info["duration"],
             "title": info["title"],
         }
