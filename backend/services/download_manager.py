@@ -11,6 +11,7 @@ from pathlib import Path
 import aiosqlite
 
 from backend.config import settings
+from backend.services.retry import with_retry
 from backend.services.stream_resolver import resolve_stream
 
 
@@ -104,7 +105,11 @@ class DownloadManager:
                 return self._active[video_id]
 
             # Resolve stream URLs without blocking the event loop
-            stream_info = await asyncio.to_thread(resolve_stream, video_id)
+            stream_info = await with_retry(
+                lambda: asyncio.to_thread(resolve_stream, video_id),
+                max_retries=2,
+                description=f"resolve_stream({video_id})",
+            )
 
             video_url: str = stream_info["video_url"]
             audio_url: str | None = stream_info["audio_url"]

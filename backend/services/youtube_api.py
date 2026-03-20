@@ -9,6 +9,7 @@ import aiosqlite
 import httpx
 
 from backend.services.auth_manager import AuthManager
+from backend.services.retry import with_retry
 
 _YT_API_BASE = "https://www.googleapis.com/youtube/v3"
 
@@ -64,7 +65,9 @@ class YouTubeAPI:
         )
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
+            async def _do_request():
+                return await client.get(url, headers=headers)
+            response = await with_retry(_do_request, description="YouTube API get_home_feed")
 
         if response.status_code == 304 and etag_row:
             # Cache hit — load video IDs from feed_cache, then fetch rows from videos table
@@ -99,13 +102,15 @@ class YouTubeAPI:
         """
         headers = await self._auth.get_auth_headers()
         async with httpx.AsyncClient() as client:
-            subs_resp = await client.get(
-                f"{_YT_API_BASE}/subscriptions?"
-                + urlencode(
-                    {"part": "snippet", "mine": "true", "maxResults": 50}
-                ),
-                headers=headers,
-            )
+            async def _do_subs_request():
+                return await client.get(
+                    f"{_YT_API_BASE}/subscriptions?"
+                    + urlencode(
+                        {"part": "snippet", "mine": "true", "maxResults": 50}
+                    ),
+                    headers=headers,
+                )
+            subs_resp = await with_retry(_do_subs_request, description="YouTube API get_subscriptions")
             subs_resp.raise_for_status()
             subs_data = subs_resp.json()
 
@@ -154,18 +159,20 @@ class YouTubeAPI:
         """Search YouTube and return enriched video dicts."""
         headers = await self._auth.get_auth_headers()
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{_YT_API_BASE}/search?"
-                + urlencode(
-                    {
-                        "part": "snippet",
-                        "q": query,
-                        "type": "video",
-                        "maxResults": max_results,
-                    }
-                ),
-                headers=headers,
-            )
+            async def _do_search_request():
+                return await client.get(
+                    f"{_YT_API_BASE}/search?"
+                    + urlencode(
+                        {
+                            "part": "snippet",
+                            "q": query,
+                            "type": "video",
+                            "maxResults": max_results,
+                        }
+                    ),
+                    headers=headers,
+                )
+            resp = await with_retry(_do_search_request, description="YouTube API search")
             resp.raise_for_status()
 
         items = resp.json().get("items", [])
@@ -195,16 +202,18 @@ class YouTubeAPI:
         headers = await self._auth.get_auth_headers()
         ids_param = ",".join(video_ids)
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{_YT_API_BASE}/videos?"
-                + urlencode(
-                    {
-                        "part": "snippet,contentDetails,statistics",
-                        "id": ids_param,
-                    }
-                ),
-                headers=headers,
-            )
+            async def _do_details_request():
+                return await client.get(
+                    f"{_YT_API_BASE}/videos?"
+                    + urlencode(
+                        {
+                            "part": "snippet,contentDetails,statistics",
+                            "id": ids_param,
+                        }
+                    ),
+                    headers=headers,
+                )
+            resp = await with_retry(_do_details_request, description="YouTube API get_video_details")
             resp.raise_for_status()
 
         return self._parse_video_items(resp.json().get("items", []))
