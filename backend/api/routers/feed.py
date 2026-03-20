@@ -89,3 +89,21 @@ async def get_subscriptions_feed(request: Request):
         asyncio.create_task(_check_precache_rules(videos, request.app))
 
     return _build_response("subscriptions", videos, from_cache, cached_at)
+
+
+@router.get("/feed/watch-later")
+async def get_watch_later_feed(request: Request):
+    """Return the user's Watch Later playlist."""
+    db = await get_db()
+    auth_manager = AuthManager(db)
+    youtube_api = YouTubeAPI(auth_manager, db)
+    thumb_cache = ThumbnailCache(db)
+    video_repo = VideoRepo(db)
+
+    videos, from_cache, cached_at = await youtube_api.get_watch_later()
+
+    if not from_cache:
+        await video_repo.upsert_many_from_dicts(videos)
+        asyncio.create_task(thumb_cache.cache_thumbnails(videos))
+
+    return _build_response("watch_later", videos, from_cache, cached_at)
