@@ -248,4 +248,92 @@ class ModelsTest {
         assertNotNull(meta.chapters)
         assertTrue(meta.chapters.isEmpty())
     }
+
+    @Test
+    fun `deserialize SubtitleTrack manual`() {
+        val json = """
+        {
+            "lang": "en",
+            "name": "English",
+            "auto": false
+        }
+        """.trimIndent()
+
+        val track = gson.fromJson(json, SubtitleTrack::class.java)
+
+        assertEquals("en", track.lang)
+        assertEquals("English", track.name)
+        assertFalse(track.auto)
+    }
+
+    @Test
+    fun `deserialize SubtitleTrack automatic caption`() {
+        val json = """
+        {
+            "lang": "de",
+            "name": "German (auto)",
+            "auto": true
+        }
+        """.trimIndent()
+
+        val track = gson.fromJson(json, SubtitleTrack::class.java)
+
+        assertEquals("de", track.lang)
+        assertEquals("German (auto)", track.name)
+        assertTrue(track.auto)
+    }
+
+    @Test
+    fun `SubtitleTrack auto defaults to false when absent`() {
+        val json = """
+        {
+            "lang": "fr",
+            "name": "French"
+        }
+        """.trimIndent()
+
+        val track = gson.fromJson(json, SubtitleTrack::class.java)
+
+        assertEquals("fr", track.lang)
+        assertFalse(track.auto)
+    }
+
+    @Test
+    fun `deserialize SubtitleResponse with multiple tracks`() {
+        val json = """
+        {
+            "video_id": "dQw4w9WgXcQ",
+            "tracks": [
+                {"lang": "en", "name": "English", "auto": false},
+                {"lang": "fr", "name": "French", "auto": false},
+                {"lang": "de", "name": "German (auto)", "auto": true}
+            ]
+        }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SubtitleResponse::class.java)
+
+        assertEquals("dQw4w9WgXcQ", response.videoId)
+        assertEquals(3, response.tracks.size)
+        assertEquals("en", response.tracks[0].lang)
+        assertEquals("English", response.tracks[0].name)
+        assertFalse(response.tracks[0].auto)
+        assertEquals("de", response.tracks[2].lang)
+        assertTrue(response.tracks[2].auto)
+    }
+
+    @Test
+    fun `deserialize SubtitleResponse with empty tracks`() {
+        val json = """
+        {
+            "video_id": "test",
+            "tracks": []
+        }
+        """.trimIndent()
+
+        val response = gson.fromJson(json, SubtitleResponse::class.java)
+
+        assertEquals("test", response.videoId)
+        assertTrue(response.tracks.isEmpty())
+    }
 }
