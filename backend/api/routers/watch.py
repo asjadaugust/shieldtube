@@ -1,4 +1,5 @@
 """Watch history and playback progress endpoints."""
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
@@ -45,6 +46,7 @@ async def get_video_meta(video_id: str):
 
     watch = await watch_repo.get(video_id)
     last_position = watch.position_seconds if watch else 0
+    chapters = json.loads(video.chapters_json) if video.chapters_json else []
 
     return {
         "id": video.id,
@@ -54,6 +56,7 @@ async def get_video_meta(video_id: str):
         "duration": video.duration,
         "cache_status": video.cache_status,
         "last_position_seconds": last_position,
+        "chapters": chapters,
     }
 
 
