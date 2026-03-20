@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import httpx
 
 from backend.db.database import init_db, close_db, get_db
 from backend.config import settings
@@ -54,6 +56,30 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ShieldTube API", version="0.3.0", lifespan=lifespan)
+
+
+@app.exception_handler(httpx.TimeoutException)
+async def timeout_handler(request: Request, exc: httpx.TimeoutException):
+    return JSONResponse(
+        status_code=503,
+        content={"error": "External service timeout", "retry_after": 5},
+        headers={"Retry-After": "5"},
+    )
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    if "token" in str(exc).lower() or "auth" in str(exc).lower():
+        return JSONResponse(status_code=401, content={"error": str(exc)})
+    return JSONResponse(status_code=400, content={"error": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def generic_handler(request: Request, exc: Exception):
+    import logging
+    logging.error(f"Unhandled error: {exc}", exc_info=True)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
 
 from backend.api.routers import video, feed, search, auth, watch, cache  # noqa: E402
 
