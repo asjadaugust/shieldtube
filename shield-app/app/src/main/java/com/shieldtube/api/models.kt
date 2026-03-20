@@ -19,3 +19,18 @@ data class FeedResponse(
     @SerializedName("cached_at") val cachedAt: String?,
     @SerializedName("from_cache") val fromCache: Boolean
 )
+
+data class ProgressBody(
+    @SerializedName("position_seconds") val positionSeconds: Int,
+    val duration: Int
+)
+
+data class VideoMeta(
+    val id: String,
+    val title: String,
+    @SerializedName("channel_name") val channelName: String,
+    @SerializedName("channel_id") val channelId: String,
+    val duration: Int?,
+    @SerializedName("cache_status") val cacheStatus: String?,
+    @SerializedName("last_position_seconds") val lastPositionSeconds: Int
+)
