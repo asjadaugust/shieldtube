@@ -35,6 +35,8 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.5"
 
       - name: Build Android app
         working-directory: shield-app
