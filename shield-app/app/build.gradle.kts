@@ -68,7 +68,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.test:core:1.5.0")
     testImplementation("androidx.test.ext:junit:1.1.5")
-    debugImplementation("androidx.fragment:fragment-testing:1.6.2")
+    testImplementation("androidx.fragment:fragment-testing:1.6.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
 }
