@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from backend.db.database import init_db, close_db, get_db
 from backend.config import settings
 from backend.services.download_manager import DownloadManager
+from backend.services.download_queue import DownloadQueue
 
 
 @asynccontextmanager
@@ -32,7 +33,15 @@ async def lifespan(app: FastAPI):
     db = await get_db()
     app.state.download_manager = DownloadManager(db)
 
+    # Initialize download queue for pre-caching
+    queue = DownloadQueue(app.state.download_manager)
+    await queue.start()
+    app.state.download_queue = queue
+
     yield
+
+    if hasattr(app.state, "download_queue"):
+        await app.state.download_queue.stop()
     await close_db()
 
 
