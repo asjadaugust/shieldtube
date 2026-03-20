@@ -6,14 +6,17 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.shieldtube.api.ApiClient
 import com.shieldtube.api.ProgressBody
+import com.shieldtube.api.SponsorSegment
 import kotlinx.coroutines.*
 
 class PlaybackFragment : Fragment() {
@@ -36,6 +39,10 @@ class PlaybackFragment : Fragment() {
     private var playerView: PlayerView? = null
     private var progressJob: Job? = null
     private var videoId: String? = null
+    private var sponsorSegments: List<SponsorSegment> = emptyList()
+    private var skippedSegmentIndices: MutableSet<Int> = mutableSetOf()
+    private var skipCheckJob: Job? = null
+    private var userSeekedRecently = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -100,6 +107,37 @@ class PlaybackFragment : Fragment() {
 
                 // Start periodic progress reporting
                 startProgressReporting(videoId, exoPlayer)
+
+                // Fetch SponsorBlock segments
+                lifecycleScope.launch {
+                    try {
+                        val response = ApiClient.api.getSponsorSegments(videoId)
+                        sponsorSegments = response.segments
+                        if (sponsorSegments.isNotEmpty()) {
+                            startSkipChecking(exoPlayer)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to fetch sponsor segments: ${e.message}")
+                    }
+                }
+
+                // Detect manual seeks to suppress auto-skip
+                exoPlayer.addListener(object : Player.Listener {
+                    override fun onPositionDiscontinuity(
+                        oldPosition: Player.PositionInfo,
+                        newPosition: Player.PositionInfo,
+                        reason: Int
+                    ) {
+                        if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                            userSeekedRecently = true
+                            // Reset after 2 seconds
+                            lifecycleScope.launch {
+                                delay(2000)
+                                userSeekedRecently = false
+                            }
+                        }
+                    }
+                })
             }
     }
 
@@ -118,6 +156,40 @@ class PlaybackFragment : Fragment() {
                         )
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to report progress: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun startSkipChecking(exoPlayer: ExoPlayer) {
+        skipCheckJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(500) // Check every 500ms
+                if (!exoPlayer.isPlaying || userSeekedRecently) continue
+
+                val positionSec = exoPlayer.currentPosition / 1000.0
+                for ((index, segment) in sponsorSegments.withIndex()) {
+                    if (index in skippedSegmentIndices) continue
+                    if (positionSec >= segment.start && positionSec < segment.end) {
+                        // Skip to end of segment
+                        val skipDuration = (segment.end - segment.start).toInt()
+                        exoPlayer.seekTo((segment.end * 1000).toLong())
+                        skippedSegmentIndices.add(index)
+
+                        // Show toast
+                        val label = when (segment.category) {
+                            "sponsor" -> "sponsor"
+                            "intro" -> "intro"
+                            "outro" -> "outro"
+                            else -> segment.category
+                        }
+                        Toast.makeText(
+                            requireContext(),
+                            "Skipped $label (${skipDuration}s)",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        break
                     }
                 }
             }
@@ -147,6 +219,11 @@ class PlaybackFragment : Fragment() {
         }
         progressJob?.cancel()
         progressJob = null
+        skipCheckJob?.cancel()
+        skipCheckJob = null
+        sponsorSegments = emptyList()
+        skippedSegmentIndices.clear()
+        userSeekedRecently = false
         player?.release()
         player = null
     }
