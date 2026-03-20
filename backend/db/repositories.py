@@ -4,6 +4,7 @@ from __future__ import annotations
 import aiosqlite
 
 from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry
+from backend.services.token_crypto import encrypt_token, decrypt_token
 
 
 def _row_to_video(row: aiosqlite.Row) -> Video:
@@ -48,8 +49,8 @@ def _row_to_thumbnail(row: aiosqlite.Row) -> Thumbnail:
 def _row_to_auth_token(row: aiosqlite.Row) -> AuthToken:
     return AuthToken(
         id=row["id"],
-        access_token=row["access_token"],
-        refresh_token=row["refresh_token"],
+        access_token=decrypt_token(row["access_token"]),
+        refresh_token=decrypt_token(row["refresh_token"]) if row["refresh_token"] else None,
         token_type=row["token_type"],
         expires_at=row["expires_at"],
         scopes=row["scopes"],
@@ -317,8 +318,8 @@ class AuthTokenRepo:
             )
             """,
             {
-                "access_token": token.access_token,
-                "refresh_token": token.refresh_token,
+                "access_token": encrypt_token(token.access_token),
+                "refresh_token": encrypt_token(token.refresh_token) if token.refresh_token else None,
                 "token_type": token.token_type,
                 "expires_at": token.expires_at,
                 "scopes": token.scopes,

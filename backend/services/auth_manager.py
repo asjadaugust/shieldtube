@@ -6,6 +6,7 @@ import aiosqlite
 import httpx
 
 from backend.config import settings
+from backend.services.token_crypto import encrypt_token, decrypt_token
 
 
 class AuthManager:
@@ -30,8 +31,8 @@ class AuthManager:
         ).fetchone()
 
         if row is not None:
-            access_token = row["access_token"]
-            refresh_token = row["refresh_token"]
+            access_token = decrypt_token(row["access_token"])
+            refresh_token = decrypt_token(row["refresh_token"]) if row["refresh_token"] else None
             expires_at_str = row["expires_at"]
 
             # Parse expiry — None means never-expires (unlikely but safe to treat as valid)
@@ -66,7 +67,7 @@ class AuthManager:
                     """UPDATE auth_tokens
                        SET access_token = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP
                        WHERE id = 1""",
-                    (new_access_token, new_expires_at),
+                    (encrypt_token(new_access_token), new_expires_at),
                 )
                 await self._db.commit()
                 return new_access_token
