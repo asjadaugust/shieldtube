@@ -33,9 +33,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ShieldTube API", version="0.2.0", lifespan=lifespan)
 
-from backend.api.routers import video, feed, search, auth  # noqa: E402
+from backend.api.routers import video, feed, search, auth, watch  # noqa: E402
 
 app.include_router(video.router, prefix="/api")
 app.include_router(feed.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(watch.router, prefix="/api")
