@@ -27,4 +27,7 @@ interface ShieldTubeApi {
 
     @GET("/api/sponsorblock/{videoId}")
     suspend fun getSponsorSegments(@Path("videoId") videoId: String): SponsorResponse
+
+    @GET("/api/cast/now-playing")
+    suspend fun getNowPlaying(): NowPlaying
 }

@@ -52,3 +52,7 @@ data class SponsorResponse(
     @SerializedName("video_id") val videoId: String,
     val segments: List<SponsorSegment>
 )
+
+data class NowPlaying(
+    @SerializedName("video_id") val videoId: String?
+)

@@ -11,9 +11,14 @@ import androidx.lifecycle.lifecycleScope
 import com.shieldtube.api.ApiClient
 import com.shieldtube.api.Video
 import com.shieldtube.player.PlaybackFragment
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class BrowseFragment : BrowseSupportFragment() {
+
+    private var castPollJob: Job? = null
 
     companion object {
         private const val HEADER_HOME = 0L
@@ -40,6 +45,29 @@ class BrowseFragment : BrowseSupportFragment() {
 
         // Load Home feed immediately on launch
         loadFeedForHeader(HEADER_HOME)
+
+        castPollJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(5000) // Poll every 5 seconds
+                try {
+                    val nowPlaying = ApiClient.api.getNowPlaying()
+                    if (nowPlaying.videoId != null) {
+                        // Navigate to playback
+                        requireActivity().supportFragmentManager.beginTransaction()
+                            .replace(android.R.id.content, PlaybackFragment.newInstance(nowPlaying.videoId))
+                            .addToBackStack("playback")
+                            .commit()
+                    }
+                } catch (e: Exception) {
+                    // Silently ignore polling errors
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        castPollJob?.cancel()
     }
 
     private fun setupHeaders() {
