@@ -2,12 +2,12 @@ package com.shieldtube.player
 
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -16,7 +16,16 @@ class PlaybackFragment : Fragment() {
 
     companion object {
         const val BACKEND_HOST = "http://192.168.1.100:8080"
-        const val VIDEO_ID = "dQw4w9WgXcQ"
+        private const val ARG_VIDEO_ID = "video_id"
+        private const val TAG = "PlaybackFragment"
+
+        fun newInstance(videoId: String): PlaybackFragment {
+            return PlaybackFragment().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_VIDEO_ID, videoId)
+                }
+            }
+        }
     }
 
     private var player: ExoPlayer? = null
@@ -47,6 +56,13 @@ class PlaybackFragment : Fragment() {
     }
 
     private fun initPlayer() {
+        val videoId = arguments?.getString(ARG_VIDEO_ID)
+        if (videoId == null) {
+            Log.e(TAG, "No video ID provided")
+            parentFragmentManager.popBackStack()
+            return
+        }
+
         val renderersFactory = DefaultRenderersFactory(requireContext())
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
@@ -55,7 +71,7 @@ class PlaybackFragment : Fragment() {
             .also { exoPlayer ->
                 playerView?.player = exoPlayer
 
-                val streamUrl = "$BACKEND_HOST/api/video/$VIDEO_ID/stream"
+                val streamUrl = "$BACKEND_HOST/api/video/$videoId/stream"
                 val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.playWhenReady = true
