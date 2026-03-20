@@ -7,10 +7,14 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.shieldtube.api.ApiClient
+import com.shieldtube.api.ProgressBody
+import kotlinx.coroutines.*
 
 class PlaybackFragment : Fragment() {
 
@@ -30,6 +34,8 @@ class PlaybackFragment : Fragment() {
 
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
+    private var progressJob: Job? = null
+    private var videoId: String? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -63,6 +69,8 @@ class PlaybackFragment : Fragment() {
             return
         }
 
+        this.videoId = videoId
+
         val renderersFactory = DefaultRenderersFactory(requireContext())
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
 
@@ -74,12 +82,71 @@ class PlaybackFragment : Fragment() {
                 val streamUrl = "$BACKEND_HOST/api/video/$videoId/stream"
                 val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
                 exoPlayer.setMediaItem(mediaItem)
+
+                // Fetch resume position (don't block playback if it fails)
+                lifecycleScope.launch {
+                    try {
+                        val meta = ApiClient.api.getVideoMeta(videoId)
+                        if (meta.lastPositionSeconds > 0) {
+                            exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to fetch resume position: ${e.message}")
+                    }
+                }
+
                 exoPlayer.playWhenReady = true
                 exoPlayer.prepare()
+
+                // Start periodic progress reporting
+                startProgressReporting(videoId, exoPlayer)
             }
     }
 
+    private fun startProgressReporting(videoId: String, exoPlayer: ExoPlayer) {
+        progressJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(10_000)
+                if (exoPlayer.isPlaying) {
+                    try {
+                        ApiClient.api.reportProgress(
+                            videoId,
+                            ProgressBody(
+                                positionSeconds = (exoPlayer.currentPosition / 1000).toInt(),
+                                duration = (exoPlayer.duration / 1000).toInt()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to report progress: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
     private fun releasePlayer() {
+        // Send final progress report
+        videoId?.let { vid ->
+            player?.let { p ->
+                if (p.currentPosition > 0) {
+                    lifecycleScope.launch {
+                        try {
+                            ApiClient.api.reportProgress(
+                                vid,
+                                ProgressBody(
+                                    positionSeconds = (p.currentPosition / 1000).toInt(),
+                                    duration = (p.duration / 1000).toInt()
+                                )
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to send final progress: ${e.message}")
+                        }
+                    }
+                }
+            }
+        }
+        progressJob?.cancel()
+        progressJob = null
         player?.release()
         player = null
     }
