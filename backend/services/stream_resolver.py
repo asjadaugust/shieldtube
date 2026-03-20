@@ -46,4 +46,5 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True) -> dict:
             "duration": info["duration"],
             "title": info["title"],
             "filesize": filesize if filesize > 0 else 100_000_000,
+            "chapters": info.get("chapters") or [],
         }

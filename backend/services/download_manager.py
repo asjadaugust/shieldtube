@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -108,6 +109,14 @@ class DownloadManager:
             video_url: str = stream_info["video_url"]
             audio_url: str | None = stream_info["audio_url"]
             filesize: int = stream_info["filesize"]
+
+            # Store chapters in DB
+            chapters_json = json.dumps(stream_info.get("chapters", []))
+            await self._db.execute(
+                "UPDATE videos SET chapters_json = ? WHERE id = ?",
+                (chapters_json, video_id),
+            )
+            await self._db.commit()
 
             output_path = self._output_path(video_id)
             output_path.parent.mkdir(parents=True, exist_ok=True)
