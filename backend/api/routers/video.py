@@ -12,11 +12,26 @@ from backend.services.thumbnail_cache import ThumbnailCache
 router = APIRouter()
 
 
+@router.get("/video/{video_id}/formats")
+async def get_formats(video_id: str):
+    """Return available quality formats for a video."""
+    return {
+        "video_id": video_id,
+        "formats": [
+            {"quality": "auto", "label": "Auto (Best HDR)"},
+            {"quality": "4K_HDR", "label": "4K HDR"},
+            {"quality": "4K", "label": "4K"},
+            {"quality": "1080p", "label": "1080p"},
+            {"quality": "720p", "label": "720p"},
+        ],
+    }
+
+
 @router.get("/video/{video_id}/stream")
-async def stream_video(video_id: str, request: Request):
+async def stream_video(video_id: str, request: Request, quality: str = "auto"):
     """Serve video with HTTP range-request support. Supports growing files during download."""
     dm = request.app.state.download_manager
-    state = await dm.get_or_start_download(video_id)
+    state = await dm.get_or_start_download(video_id, quality=quality)
 
     video_path = state.file_path
     total_size = state.expected_size

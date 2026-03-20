@@ -45,7 +45,7 @@ class DownloadManager:
     # Public API
     # ------------------------------------------------------------------
 
-    async def get_or_start_download(self, video_id: str) -> DownloadState:
+    async def get_or_start_download(self, video_id: str, quality: str = "auto") -> DownloadState:
         """Return existing or start a new download.
 
         Order of precedence:
@@ -53,10 +53,11 @@ class DownloadManager:
         2. Download already active → return existing state.
         3. Otherwise start a new download.
         """
-        output_path = self._output_path(video_id)
+        cache_key = f"{video_id}_{quality}" if quality != "auto" else video_id
+        output_path = self._output_path(cache_key)
 
         # Fast path: file on disk, not currently tracked
-        if output_path.exists() and video_id not in self._active:
+        if output_path.exists() and cache_key not in self._active:
             return DownloadState(
                 video_id=video_id,
                 file_path=output_path,
@@ -65,14 +66,15 @@ class DownloadManager:
                 status="cached",
             )
 
-        if video_id in self._active:
-            return self._active[video_id]
+        if cache_key in self._active:
+            return self._active[cache_key]
 
-        return await self._start_download(video_id)
+        return await self._start_download(video_id, quality=quality)
 
-    def get_download_status(self, video_id: str) -> dict | None:
+    def get_download_status(self, video_id: str, quality: str = "auto") -> dict | None:
         """Return progress dict for an active download, or None if unknown."""
-        state = self._active.get(video_id)
+        cache_key = f"{video_id}_{quality}" if quality != "auto" else video_id
+        state = self._active.get(cache_key)
         if state is None:
             return None
 
@@ -94,21 +96,22 @@ class DownloadManager:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _start_download(self, video_id: str) -> DownloadState:
+    async def _start_download(self, video_id: str, quality: str = "auto") -> DownloadState:
         """Acquire per-video lock, resolve stream, launch FFmpeg."""
-        if video_id not in self._locks:
-            self._locks[video_id] = asyncio.Lock()
+        cache_key = f"{video_id}_{quality}" if quality != "auto" else video_id
+        if cache_key not in self._locks:
+            self._locks[cache_key] = asyncio.Lock()
 
-        async with self._locks[video_id]:
+        async with self._locks[cache_key]:
             # Double-check: another coroutine may have raced us to the lock
-            if video_id in self._active:
-                return self._active[video_id]
+            if cache_key in self._active:
+                return self._active[cache_key]
 
             # Resolve stream URLs without blocking the event loop
             stream_info = await with_retry(
-                lambda: asyncio.to_thread(resolve_stream, video_id),
+                lambda: asyncio.to_thread(resolve_stream, video_id, True, quality),
                 max_retries=2,
-                description=f"resolve_stream({video_id})",
+                description=f"resolve_stream({video_id}, quality={quality})",
             )
 
             video_url: str = stream_info["video_url"]
@@ -123,7 +126,7 @@ class DownloadManager:
             )
             await self._db.commit()
 
-            output_path = self._output_path(video_id)
+            output_path = self._output_path(cache_key)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             cmd = ["ffmpeg", "-y", "-i", video_url]
@@ -150,7 +153,7 @@ class DownloadManager:
                 process=process,
                 status="downloading",
             )
-            self._active[video_id] = state
+            self._active[cache_key] = state
 
             # Persist to DB
             await self._db.execute(
@@ -160,19 +163,20 @@ class DownloadManager:
             await self._db.commit()
 
             # Monitor in background
-            asyncio.create_task(self._monitor_download(video_id, process))
+            asyncio.create_task(self._monitor_download(cache_key, video_id, process))
 
             return state
 
     async def _monitor_download(
         self,
+        cache_key: str,
         video_id: str,
         process: asyncio.subprocess.Process,
     ) -> None:
         """Wait for FFmpeg to finish, then update state and DB."""
         _, stderr = await process.communicate()
 
-        state = self._active.get(video_id)
+        state = self._active.get(cache_key)
 
         if process.returncode == 0:
             # Update to actual file size
@@ -204,8 +208,8 @@ class DownloadManager:
 
         # Grace period then clean up tracking dicts
         await asyncio.sleep(5)
-        self._active.pop(video_id, None)
-        self._locks.pop(video_id, None)
+        self._active.pop(cache_key, None)
+        self._locks.pop(cache_key, None)
 
     def _output_path(self, video_id: str) -> Path:
         return self._cache_dir / f"{video_id}.mp4"
