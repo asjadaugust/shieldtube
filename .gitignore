@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+cache/
+.env
+*.db
+.gradle/
+build/
+local.properties
