@@ -5,13 +5,25 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8443:8443"
+      - "9443:9443"
     volumes:
       - ./cache:/app/cache
+      - ./data:/app/data
       - ./config/certs:/app/config/certs:ro
     environment:
       - CACHE_DIR=/app/cache
+      - DB_PATH=/app/data/shieldtube.db
       - FFMPEG_THREADS=${FFMPEG_THREADS:-2}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - API_SECRET=${API_SECRET:-}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-}
     restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    network_mode: "service:shieldtube-api"

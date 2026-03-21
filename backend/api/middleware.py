@@ -10,8 +10,11 @@ EXEMPT_PREFIXES = (
     "/openapi.json",
     "/redoc",
     "/dashboard",
+    "/mobile",
     "/api/auth/login",
     "/api/auth/callback",
+    "/api/auth/status",
+    "/api/video/",
 )
 
 
