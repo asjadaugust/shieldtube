@@ -11,3 +11,4 @@ local.properties
 .worktrees/
 config/certs/
 *.pem
+rec_engine/embeddings.db

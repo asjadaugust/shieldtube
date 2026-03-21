@@ -1,0 +1,11 @@
+models:
+  preferred: "all-mpnet-base-v2"
+  fallback:
+    - "all-MiniLM-L12-v2"
+    - "all-MiniLM-L6-v2"
+  auto_fallback: true
+
+ram_threshold_mb: 500
+download_threshold: 0.7
+candidate_count: 200
+output_count: 100
