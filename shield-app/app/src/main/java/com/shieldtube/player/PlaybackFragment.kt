@@ -15,12 +15,16 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.PlayerView
 import com.shieldtube.api.ApiClient
 import com.shieldtube.api.Chapter
@@ -33,7 +37,7 @@ import kotlinx.coroutines.*
 class PlaybackFragment : Fragment() {
 
     companion object {
-        const val BACKEND_HOST = "https://192.168.1.100:8443"
+        const val BACKEND_HOST = "https://192.168.0.26:9443"
         private const val ARG_VIDEO_ID = "video_id"
         private const val TAG = "PlaybackFragment"
 
@@ -78,6 +82,9 @@ class PlaybackFragment : Fragment() {
     private var qualityOverlay: LinearLayout? = null
     private var qualityOverlayVisible: Boolean = false
 
+    private var controlsHideJob: Job? = null
+    private val CONTROLS_HIDE_DELAY = 4000L
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -88,6 +95,8 @@ class PlaybackFragment : Fragment() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+            controllerShowTimeoutMs = -1 // We manage hide timing ourselves
+            controllerAutoShow = false
         }
 
         // Chapter title overlay: semi-transparent black background, white text, top-left
@@ -170,37 +179,7 @@ class PlaybackFragment : Fragment() {
             addView(qualityOverlay)
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN) {
-                    when {
-                        keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && event.isLongPress -> {
-                            jumpToNextChapter()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.isLongPress -> {
-                            jumpToPreviousChapter()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_DPAD_DOWN && event.isLongPress -> {
-                            toggleSubtitleOverlay()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_DPAD_UP && event.isLongPress -> {
-                            toggleSpeedOverlay()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_MENU -> {
-                            toggleQualityOverlay()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_BACK && qualityOverlayVisible -> {
-                            hideQualityOverlay()
-                            true
-                        }
-                        keyCode == KeyEvent.KEYCODE_BACK && subtitleOverlayVisible -> {
-                            hideSubtitleOverlay()
-                            true
-                        }
-                        else -> false
-                    }
+                    handleKeyDown(keyCode, event)
                 } else {
                     false
                 }
@@ -241,7 +220,19 @@ class PlaybackFragment : Fragment() {
 
                     val streamUrl = buildStreamUrl(videoId)
                     val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
-                    exoPlayer.setMediaItem(mediaItem)
+
+                    // Use ProgressiveMediaSource with constant-bitrate seeking
+                    // so ExoPlayer can seek in fragmented MP4 streams (empty_moov)
+                    val dataSourceFactory = DefaultHttpDataSource.Factory()
+                        .setDefaultRequestProperties(mapOf(
+                            "X-ShieldTube-Secret" to com.shieldtube.BuildConfig.API_SECRET
+                        ))
+                    val extractorsFactory = DefaultExtractorsFactory()
+                        .setConstantBitrateSeekingEnabled(true)
+                    val mediaSource = ProgressiveMediaSource.Factory(
+                        dataSourceFactory, extractorsFactory
+                    ).createMediaSource(mediaItem)
+                    exoPlayer.setMediaSource(mediaSource)
 
                     // Fetch resume position and chapters (don't block playback if it fails)
                     lifecycleScope.launch {
@@ -299,6 +290,39 @@ class PlaybackFragment : Fragment() {
                         }
                     }
 
+                    // Report play/pause/completed events
+                    exoPlayer.addListener(object : Player.Listener {
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            val vid = videoId ?: return
+                            lifecycleScope.launch {
+                                try {
+                                    ApiClient.api.reportProgress(vid, ProgressBody(
+                                        positionSeconds = (exoPlayer.currentPosition / 1000).toInt(),
+                                        duration = (exoPlayer.duration / 1000).toInt(),
+                                        event = if (isPlaying) "playing" else "paused",
+                                        speed = currentSpeed
+                                    ))
+                                } catch (_: Exception) {}
+                            }
+                        }
+
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                val vid = videoId ?: return
+                                lifecycleScope.launch {
+                                    try {
+                                        ApiClient.api.reportProgress(vid, ProgressBody(
+                                            positionSeconds = (exoPlayer.duration / 1000).toInt(),
+                                            duration = (exoPlayer.duration / 1000).toInt(),
+                                            event = "completed",
+                                            speed = currentSpeed
+                                        ))
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        }
+                    })
+
                     // Detect manual seeks to suppress auto-skip
                     exoPlayer.addListener(object : Player.Listener {
                         override fun onPositionDiscontinuity(
@@ -334,7 +358,9 @@ class PlaybackFragment : Fragment() {
                             videoId,
                             ProgressBody(
                                 positionSeconds = (exoPlayer.currentPosition / 1000).toInt(),
-                                duration = (exoPlayer.duration / 1000).toInt()
+                                duration = (exoPlayer.duration / 1000).toInt(),
+                                event = "playing",
+                                speed = currentSpeed
                             )
                         )
                     } catch (e: Exception) {
@@ -639,6 +665,97 @@ class PlaybackFragment : Fragment() {
         Toast.makeText(requireContext(), "Quality: $label", Toast.LENGTH_SHORT).show()
     }
 
+    private fun handleKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Priority 1: close any open overlay
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (qualityOverlayVisible) { hideQualityOverlay(); return true }
+            if (subtitleOverlayVisible) { hideSubtitleOverlay(); return true }
+            if (speedOverlay?.visibility == View.VISIBLE) { speedOverlay?.visibility = View.GONE; return true }
+            // Controls visible → hide them and keep playing
+            if (playerView?.isControllerFullyVisible == true) {
+                hideControls()
+                return true
+            }
+            // Controls hidden → go back to browse
+            return false
+        }
+
+        // Play/Pause buttons: toggle playback + show controls
+        if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+            keyCode == KeyEvent.KEYCODE_MEDIA_PLAY ||
+            keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE
+        ) {
+            player?.let { p ->
+                if (p.isPlaying) p.pause() else p.play()
+            }
+            showControlsWithAutoHide()
+            return true
+        }
+
+        // OK/Select: if controls hidden → show controls + pause; if visible → toggle play/pause
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            if (playerView?.isControllerFullyVisible != true) {
+                player?.pause()
+                showControlsWithAutoHide()
+            } else {
+                player?.let { p ->
+                    if (p.isPlaying) p.pause() else p.play()
+                }
+                scheduleControlsHide()
+            }
+            return true
+        }
+
+        // Long-press actions
+        if (event.isLongPress) {
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { jumpToNextChapter(); true }
+                KeyEvent.KEYCODE_DPAD_LEFT -> { jumpToPreviousChapter(); true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { toggleSubtitleOverlay(); true }
+                KeyEvent.KEYCODE_DPAD_UP -> { toggleSpeedOverlay(); true }
+                else -> false
+            }
+        }
+
+        // Menu key: quality overlay
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            toggleQualityOverlay()
+            return true
+        }
+
+        // D-pad: show controls (let PlayerView handle seek/scrub)
+        if (keyCode in listOf(
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN
+            )
+        ) {
+            showControlsWithAutoHide()
+            return false // Let PlayerView handle the actual seek
+        }
+
+        return false
+    }
+
+    private fun showControlsWithAutoHide() {
+        playerView?.showController()
+        scheduleControlsHide()
+    }
+
+    private fun scheduleControlsHide() {
+        controlsHideJob?.cancel()
+        controlsHideJob = lifecycleScope.launch {
+            delay(CONTROLS_HIDE_DELAY)
+            if (player?.isPlaying == true) {
+                hideControls()
+            }
+        }
+    }
+
+    private fun hideControls() {
+        controlsHideJob?.cancel()
+        playerView?.hideController()
+    }
+
     private fun releasePlayer() {
         // Send final progress report
         videoId?.let { vid ->
@@ -650,7 +767,9 @@ class PlaybackFragment : Fragment() {
                                 vid,
                                 ProgressBody(
                                     positionSeconds = (p.currentPosition / 1000).toInt(),
-                                    duration = (p.duration / 1000).toInt()
+                                    duration = (p.duration / 1000).toInt(),
+                                    event = "abandoned",
+                                    speed = currentSpeed
                                 )
                             )
                         } catch (e: Exception) {
@@ -666,6 +785,8 @@ class PlaybackFragment : Fragment() {
         skipCheckJob = null
         chapterCheckJob?.cancel()
         chapterCheckJob = null
+        controlsHideJob?.cancel()
+        controlsHideJob = null
         sponsorSegments = emptyList()
         skippedSegmentIndices.clear()
         userSeekedRecently = false

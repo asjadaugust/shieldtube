@@ -16,6 +16,9 @@ interface ShieldTubeApi {
     @GET("/api/feed/watch-later")
     suspend fun getFeedWatchLater(): FeedResponse
 
+    @GET("/api/feed/recommended")
+    suspend fun getFeedRecommended(): FeedResponse
+
     @GET("/api/search")
     suspend fun search(@Query("q") query: String): FeedResponse
 
@@ -39,4 +42,13 @@ interface ShieldTubeApi {
 
     @GET("/api/video/{videoId}/formats")
     suspend fun getFormats(@Path("videoId") videoId: String): FormatsResponse
+
+    @GET("/api/auth/status")
+    suspend fun getAuthStatus(): AuthStatusResponse
+
+    @GET("/api/auth/login")
+    suspend fun authLogin(): DeviceFlowResponse
+
+    @GET("/api/auth/callback")
+    suspend fun authCallback(@Query("device_code") deviceCode: String): AuthCallbackResponse
 }

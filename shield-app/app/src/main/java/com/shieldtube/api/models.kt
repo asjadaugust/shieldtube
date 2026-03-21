@@ -10,19 +10,24 @@ data class Video(
     @SerializedName("view_count") val viewCount: Long?,
     val duration: Int?,
     @SerializedName("published_at") val publishedAt: String?,
-    @SerializedName("thumbnail_url") val thumbnailUrl: String
+    @SerializedName("thumbnail_url") val thumbnailUrl: String,
+    @SerializedName("pre_cached") val preCached: Boolean = false
 )
 
 data class FeedResponse(
     @SerializedName("feed_type") val feedType: String,
     val videos: List<Video>,
     @SerializedName("cached_at") val cachedAt: String?,
-    @SerializedName("from_cache") val fromCache: Boolean
+    @SerializedName("from_cache") val fromCache: Boolean,
+    val source: String? = null,
+    val freshness: String? = null
 )
 
 data class ProgressBody(
     @SerializedName("position_seconds") val positionSeconds: Int,
-    val duration: Int
+    val duration: Int,
+    val event: String? = null,
+    val speed: Float? = null
 )
 
 data class Chapter(
@@ -74,3 +79,15 @@ data class FormatsResponse(
     @SerializedName("video_id") val videoId: String,
     val formats: List<VideoFormat>
 )
+
+data class AuthStatusResponse(val authenticated: Boolean)
+
+data class DeviceFlowResponse(
+    @SerializedName("device_code") val deviceCode: String,
+    @SerializedName("user_code") val userCode: String,
+    @SerializedName("verification_url") val verificationUrl: String,
+    @SerializedName("expires_in") val expiresIn: Int,
+    val interval: Int
+)
+
+data class AuthCallbackResponse(val status: String)

@@ -19,16 +19,19 @@ import kotlinx.coroutines.launch
 class BrowseFragment : BrowseSupportFragment() {
 
     private var castPollJob: Job? = null
+    private val loadedFeeds = mutableSetOf<Long>()
 
     companion object {
         private const val HEADER_HOME = 0L
         private const val HEADER_SUBSCRIPTIONS = 1L
         private const val HEADER_WATCH_LATER = 2L
+        private const val HEADER_FOR_YOU = 3L
     }
 
     // Top-level adapter holds the three rows
     private lateinit var rowsAdapter: ArrayObjectAdapter
     // Per-row content adapters
+    private val forYouAdapter = ArrayObjectAdapter(CardPresenter())
     private val homeAdapter = ArrayObjectAdapter(CardPresenter())
     private val subsAdapter = ArrayObjectAdapter(CardPresenter())
     private val watchLaterAdapter = ArrayObjectAdapter(CardPresenter())
@@ -45,8 +48,15 @@ class BrowseFragment : BrowseSupportFragment() {
         setupHeaders()
         setupListeners()
 
-        // Load Home feed immediately on launch
+        // Load all feeds on launch
+        val cached = loadCachedRecommendations()
+        if (cached.isNotEmpty()) {
+            forYouAdapter.addAll(0, cached)
+        }
+        loadFeedForHeader(HEADER_FOR_YOU)
         loadFeedForHeader(HEADER_HOME)
+        loadFeedForHeader(HEADER_SUBSCRIPTIONS)
+        loadFeedForHeader(HEADER_WATCH_LATER)
 
         castPollJob = lifecycleScope.launch {
             while (isActive) {
@@ -74,6 +84,9 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun setupHeaders() {
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
+
+        val forYouHeader = HeaderItem(HEADER_FOR_YOU, "For You")
+        rowsAdapter.add(ListRow(forYouHeader, forYouAdapter))
 
         val homeHeader = HeaderItem(HEADER_HOME, "Home")
         val subsHeader = HeaderItem(HEADER_SUBSCRIPTIONS, "Subscriptions")
@@ -114,29 +127,47 @@ class BrowseFragment : BrowseSupportFragment() {
     }
 
     private fun loadFeedForHeader(headerId: Long) {
+        if (headerId in loadedFeeds) {
+            android.util.Log.d("ShieldTube", "loadFeed: header=$headerId already loaded, skipping")
+            return
+        }
+        loadedFeeds.add(headerId)
+        android.util.Log.d("ShieldTube", "loadFeed: launching coroutine for header=$headerId")
         lifecycleScope.launch {
             try {
+                android.util.Log.d("ShieldTube", "loadFeed: requesting feed for header=$headerId")
                 val feedResponse = when (headerId) {
+                    HEADER_FOR_YOU -> ApiClient.api.getFeedRecommended()
                     HEADER_HOME -> ApiClient.api.getFeedHome()
                     HEADER_SUBSCRIPTIONS -> ApiClient.api.getFeedSubscriptions()
                     HEADER_WATCH_LATER -> ApiClient.api.getFeedWatchLater()
                     else -> return@launch
                 }
+                android.util.Log.d("ShieldTube", "loadFeed: got ${feedResponse.videos.size} videos for header=$headerId")
                 updateRowContent(headerId, feedResponse.videos)
-            } catch (e: Exception) {
-                val message = when (headerId) {
-                    HEADER_HOME -> "Couldn't load feed. Check your connection."
-                    HEADER_SUBSCRIPTIONS -> "Couldn't load subscriptions. Check your connection."
-                    HEADER_WATCH_LATER -> "Couldn't load Watch Later. Check your connection."
-                    else -> "Couldn't load feed. Check your connection."
+            } catch (e: retrofit2.HttpException) {
+                android.util.Log.e("ShieldTube", "loadFeed: HTTP error for header=$headerId: ${e.code()} ${e.message()}", e)
+                if (e.code() == 401 && isAdded) {
+                    parentFragmentManager.beginTransaction()
+                        .replace(android.R.id.content, LoginFragment())
+                        .commit()
+                    return@launch
                 }
-                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                if (isAdded) {
+                    Toast.makeText(requireContext(), "Couldn't load feed. Check your connection.", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ShieldTube", "loadFeed: exception for header=$headerId: ${e.javaClass.simpleName}: ${e.message}", e)
+                if (isAdded) {
+                    Toast.makeText(requireContext(), "Couldn't load feed. Check your connection.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
 
     private fun updateRowContent(headerId: Long, videos: List<Video>) {
         val targetAdapter = when (headerId) {
+            HEADER_FOR_YOU -> forYouAdapter
             HEADER_HOME -> homeAdapter
             HEADER_SUBSCRIPTIONS -> subsAdapter
             HEADER_WATCH_LATER -> watchLaterAdapter
@@ -144,5 +175,27 @@ class BrowseFragment : BrowseSupportFragment() {
         }
         targetAdapter.clear()
         targetAdapter.addAll(0, videos)
+        if (headerId == HEADER_FOR_YOU) cacheRecommendations(videos)
+    }
+
+    private fun cacheRecommendations(videos: List<Video>) {
+        try {
+            val json = com.google.gson.Gson().toJson(videos)
+            java.io.File(requireContext().filesDir, "recommended_cache.json").writeText(json)
+        } catch (e: Exception) {
+            android.util.Log.w("ShieldTube", "Failed to cache recommendations: ${e.message}")
+        }
+    }
+
+    private fun loadCachedRecommendations(): List<Video> {
+        return try {
+            val file = java.io.File(requireContext().filesDir, "recommended_cache.json")
+            if (file.exists()) {
+                val type = object : com.google.gson.reflect.TypeToken<List<Video>>() {}.type
+                com.google.gson.Gson().fromJson(file.readText(), type)
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 }
