@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <circle cx="96" cy="96" r="96" fill="#121212"/>
+  <circle cx="96" cy="96" r="88" fill="#1A1A1A"/>
+  <!-- Shield shape -->
+  <path d="M96 28L48 52v40c0 33.6 20.4 65 48 72 27.6-7 48-38.4 48-72V52L96 28z" fill="#1E1E1E" stroke="#76B900" stroke-width="3"/>
+  <!-- Inner shield fill -->
+  <path d="M96 36L56 56v36c0 28.8 17 55.6 40 62 23-6.4 40-33.2 40-62V56L96 36z" fill="#1E1E1E"/>
+  <!-- Play triangle -->
+  <path d="M82 68v56l44-28z" fill="#76B900"/>
+  <!-- Subtle glow -->
+  <circle cx="96" cy="96" r="70" fill="none" stroke="#76B900" stroke-width="0.5" opacity="0.3"/>
+</svg>
