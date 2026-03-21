@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry
+from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry, RecommendationRun, Recommendation, WatchSignal
 from backend.services.token_crypto import encrypt_token, decrypt_token
 
 
@@ -100,47 +100,52 @@ class VideoRepo:
         await self._db.commit()
 
     async def upsert_many(self, videos: list[Video]) -> None:
-        """Batch upsert a list of Video objects in a single transaction."""
+        """Batch upsert a list of Video objects.
+
+        Uses a write lock to prevent 'cannot start a transaction within a
+        transaction' errors when the feed refresher and API handlers run
+        concurrently on the shared DB connection.
+        """
         if not videos:
             return
-        async with self._db.execute("BEGIN"):
-            pass
-        try:
-            for video in videos:
-                await self._db.execute(
-                    """
-                    INSERT OR REPLACE INTO videos (
-                        id, title, channel_name, channel_id, view_count, duration,
-                        published_at, description, thumbnail_path, cached_video_path,
-                        cache_status, last_accessed, created_at, updated_at
-                    ) VALUES (
-                        :id, :title, :channel_name, :channel_id, :view_count, :duration,
-                        :published_at, :description, :thumbnail_path, :cached_video_path,
-                        :cache_status, :last_accessed,
-                        COALESCE(:created_at, CURRENT_TIMESTAMP),
-                        CURRENT_TIMESTAMP
+        from backend.db.database import get_db_write_lock
+        async with get_db_write_lock():
+            try:
+                for video in videos:
+                    await self._db.execute(
+                        """
+                        INSERT OR REPLACE INTO videos (
+                            id, title, channel_name, channel_id, view_count, duration,
+                            published_at, description, thumbnail_path, cached_video_path,
+                            cache_status, last_accessed, created_at, updated_at
+                        ) VALUES (
+                            :id, :title, :channel_name, :channel_id, :view_count, :duration,
+                            :published_at, :description, :thumbnail_path, :cached_video_path,
+                            :cache_status, :last_accessed,
+                            COALESCE(:created_at, CURRENT_TIMESTAMP),
+                            CURRENT_TIMESTAMP
+                        )
+                        """,
+                        {
+                            "id": video.id,
+                            "title": video.title,
+                            "channel_name": video.channel_name,
+                            "channel_id": video.channel_id,
+                            "view_count": video.view_count,
+                            "duration": video.duration,
+                            "published_at": video.published_at,
+                            "description": video.description,
+                            "thumbnail_path": video.thumbnail_path,
+                            "cached_video_path": video.cached_video_path,
+                            "cache_status": video.cache_status,
+                            "last_accessed": video.last_accessed,
+                            "created_at": video.created_at,
+                        },
                     )
-                    """,
-                    {
-                        "id": video.id,
-                        "title": video.title,
-                        "channel_name": video.channel_name,
-                        "channel_id": video.channel_id,
-                        "view_count": video.view_count,
-                        "duration": video.duration,
-                        "published_at": video.published_at,
-                        "description": video.description,
-                        "thumbnail_path": video.thumbnail_path,
-                        "cached_video_path": video.cached_video_path,
-                        "cache_status": video.cache_status,
-                        "last_accessed": video.last_accessed,
-                        "created_at": video.created_at,
-                    },
-                )
-            await self._db.commit()
-        except Exception:
-            await self._db.rollback()
-            raise
+                await self._db.commit()
+            except Exception:
+                await self._db.rollback()
+                raise
 
     async def upsert_many_from_dicts(self, videos: list[dict]) -> None:
         """Convert dicts to Video objects and batch upsert.
@@ -367,3 +372,91 @@ class WatchHistoryRepo:
         ) as cursor:
             rows = await cursor.fetchall()
         return [_row_to_watch_history(r) for r in rows]
+
+
+class RecommendationRepo:
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def upsert_run(self, run: RecommendationRun) -> None:
+        await self._db.execute(
+            "INSERT OR REPLACE INTO recommendation_runs (run_id, run_at, source, model_name, video_count)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (run.run_id, run.run_at, run.source, run.model_name, run.video_count),
+        )
+        await self._db.commit()
+
+    async def upsert_recommendations(self, run_id: str, recs: list) -> None:
+        for rec in recs:
+            await self._db.execute(
+                "INSERT OR REPLACE INTO recommendations (video_id, run_id, score, source, reason)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (rec.video_id, run_id, rec.score, rec.source, rec.reason),
+            )
+        await self._db.commit()
+
+    async def get_latest_run(self) -> RecommendationRun | None:
+        async with self._db.execute(
+            "SELECT * FROM recommendation_runs ORDER BY run_at DESC LIMIT 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return RecommendationRun(
+            run_id=row["run_id"], run_at=row["run_at"], source=row["source"],
+            model_name=row["model_name"], video_count=row["video_count"],
+        )
+
+    async def get_recommendations(self, run_id: str | None = None, limit: int = 50) -> list[Recommendation]:
+        if run_id is None:
+            latest = await self.get_latest_run()
+            if latest is None:
+                return []
+            run_id = latest.run_id
+        async with self._db.execute(
+            "SELECT * FROM recommendations WHERE run_id = ? ORDER BY score DESC LIMIT ?",
+            (run_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            Recommendation(
+                video_id=r["video_id"], run_id=r["run_id"], score=r["score"],
+                source=r["source"], reason=r["reason"], created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+
+class WatchSignalRepo:
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def upsert(self, signal: WatchSignal) -> None:
+        await self._db.execute(
+            """INSERT INTO watch_signals
+               (video_id, session_start, completion_rate, pause_count,
+                seek_forward_count, avg_playback_speed, time_of_day, abandoned_at_pct)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (signal.video_id, signal.session_start, signal.completion_rate,
+             signal.pause_count, signal.seek_forward_count, signal.avg_playback_speed,
+             signal.time_of_day, signal.abandoned_at_pct),
+        )
+        await self._db.commit()
+
+    async def get_for_video(self, video_id: str) -> list[WatchSignal]:
+        async with self._db.execute(
+            "SELECT * FROM watch_signals WHERE video_id = ? ORDER BY session_start DESC",
+            (video_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            WatchSignal(
+                id=r["id"], video_id=r["video_id"], session_start=r["session_start"],
+                completion_rate=r["completion_rate"], pause_count=r["pause_count"],
+                seek_forward_count=r["seek_forward_count"],
+                avg_playback_speed=r["avg_playback_speed"],
+                time_of_day=r["time_of_day"], abandoned_at_pct=r["abandoned_at_pct"],
+                updated_at=r["updated_at"],
+            )
+            for r in rows
+        ]
