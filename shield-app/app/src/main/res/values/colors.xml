@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nvidia_green">#FF76B900</color>
+    <color name="nvidia_green_dark">#FF5A8C00</color>
+    <color name="nvidia_green_light">#FF8ED100</color>
+    <color name="background_dark">#FF121212</color>
+    <color name="background_card">#FF1E1E1E</color>
+    <color name="surface_dark">#FF1A1A1A</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB0B0B0</color>
+    <color name="accent_red">#FFE94560</color>
+</resources>

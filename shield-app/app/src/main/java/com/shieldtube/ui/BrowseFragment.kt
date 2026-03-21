@@ -8,6 +8,7 @@ import androidx.leanback.widget.HeaderItem
 import androidx.leanback.widget.ListRow
 import androidx.leanback.widget.ListRowPresenter
 import androidx.lifecycle.lifecycleScope
+import com.shieldtube.R
 import com.shieldtube.api.ApiClient
 import com.shieldtube.api.Video
 import com.shieldtube.player.PlaybackFragment
@@ -42,8 +43,8 @@ class BrowseFragment : BrowseSupportFragment() {
         title = "ShieldTube"
         headersState = HEADERS_ENABLED
         isHeadersTransitionOnBackEnabled = true
-        brandColor = 0xFF1a1a2e.toInt()
-        searchAffordanceColor = 0xFFe94560.toInt()
+        brandColor = resources.getColor(R.color.background_dark, null)
+        searchAffordanceColor = resources.getColor(R.color.nvidia_green, null)
 
         setupHeaders()
         setupListeners()
