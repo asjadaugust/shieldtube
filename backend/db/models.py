@@ -22,6 +22,7 @@ class Video:
     last_accessed: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    cached_at: str | None = None
     chapters_json: str | None = None
 
 
@@ -80,3 +81,36 @@ class WatchHistoryEntry:
     position_seconds: int = 0
     duration: int | None = None
     completed: int = 0
+
+
+@dataclass
+class RecommendationRun:
+    run_id: str
+    run_at: str
+    source: str
+    model_name: str | None = None
+    video_count: int = 0
+
+
+@dataclass
+class Recommendation:
+    video_id: str
+    run_id: str
+    score: float
+    source: str = "ml"
+    reason: str | None = None
+    created_at: str | None = None
+
+
+@dataclass
+class WatchSignal:
+    id: int | None = None
+    video_id: str = ""
+    session_start: str = ""
+    completion_rate: float = 0.0
+    pause_count: int = 0
+    seek_forward_count: int = 0
+    avg_playback_speed: float = 1.0
+    time_of_day: int | None = None
+    abandoned_at_pct: float | None = None
+    updated_at: str | None = None
