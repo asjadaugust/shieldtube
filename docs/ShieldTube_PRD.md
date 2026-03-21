@@ -29,7 +29,7 @@ Google's data (your account, your subscriptions, your watch history) is the hard
 ## Non-Goals (What This Is NOT)
 
 - **Not a YouTube ripper or piracy tool.** This is a personal-use frontend for content you'd watch anyway through your authenticated account. Think of it as a better remote control, not a download farm.
-- **Not a recommendation engine replacement.** We *consume* YouTube's recommendation API. We don't build our own ML model.
+- **Local recommendation engine** supplements YouTube's feeds using watch history embeddings. ML inference runs on the laptop, not the NAS. See `docs/superpowers/specs/2026-03-21-recommendation-engine-design.md`.
 - **Not a multi-user platform.** Single Google account. Single household. Single Shield device.
 - **Not a mobile app.** Shield TV and your LG OLED. That's the scope.
 - **Not a real-time transcoding stack.** The Shield has hardware decoders for basically everything. We lean on those.
