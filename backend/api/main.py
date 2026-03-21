@@ -50,6 +50,10 @@ async def lifespan(app: FastAPI):
     await refresher.start()
     app.state.feed_refresher = refresher
 
+    # Initialize watch signal aggregator for recommendation engine
+    from backend.services.watch_signal_aggregator import WatchSignalAggregator
+    app.state.signal_aggregator = WatchSignalAggregator(db)
+
     # Start periodic yt-dlp updater (weekly)
     import asyncio
     ytdlp_task = asyncio.create_task(periodic_ytdlp_update())

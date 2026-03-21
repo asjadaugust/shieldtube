@@ -16,10 +16,12 @@ router = APIRouter()
 class ProgressBody(BaseModel):
     position_seconds: int
     duration: int
+    event: str | None = None   # playing, paused, seeked, completed, abandoned
+    speed: float | None = None  # playback speed multiplier
 
 
 @router.post("/video/{video_id}/progress")
-async def report_progress(video_id: str, body: ProgressBody):
+async def report_progress(video_id: str, body: ProgressBody, request: Request):
     """Shield app reports playback position every 10 seconds."""
     db = await get_db()
     repo = WatchHistoryRepo(db)
@@ -30,6 +32,16 @@ async def report_progress(video_id: str, body: ProgressBody):
         duration=body.duration,
     )
     await repo.upsert(entry)
+
+    # Aggregate watch signal if event data is present
+    if body.event is not None:
+        aggregator = getattr(request.app.state, "signal_aggregator", None)
+        if aggregator:
+            await aggregator.process_event(
+                video_id, body.position_seconds, body.duration,
+                event=body.event, speed=body.speed,
+            )
+
     return {"status": "ok"}
 
 
