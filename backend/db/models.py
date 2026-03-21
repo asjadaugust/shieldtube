@@ -114,3 +114,10 @@ class WatchSignal:
     time_of_day: int | None = None
     abandoned_at_pct: float | None = None
     updated_at: str | None = None
+
+
+@dataclass
+class VideoRating:
+    video_id: str
+    rating: str
+    rated_at: str | None = None

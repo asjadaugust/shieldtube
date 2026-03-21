@@ -101,7 +101,7 @@ async def generic_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
-from backend.api.routers import video, feed, search, auth, watch, cache, cast, dashboard, recommend  # noqa: E402
+from backend.api.routers import video, feed, search, auth, watch, cache, cast, dashboard, recommend, rate  # noqa: E402
 
 app.include_router(video.router, prefix="/api")
 app.include_router(feed.router, prefix="/api")
@@ -112,8 +112,13 @@ app.include_router(cache.router, prefix="/api")
 app.include_router(cast.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(recommend.router, prefix="/api")
+app.include_router(rate.router, prefix="/api")
 
 # Serve dashboard static files
 _dashboard_dir = Path(__file__).parent.parent / "dashboard"
 if _dashboard_dir.exists():
     app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
+
+_mobile_dir = Path(__file__).parent.parent / "mobile"
+if _mobile_dir.exists():
+    app.mount("/mobile", StaticFiles(directory=str(_mobile_dir), html=True), name="mobile")

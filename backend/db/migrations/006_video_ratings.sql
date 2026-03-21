@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS video_ratings (
+    video_id TEXT PRIMARY KEY,
+    rating TEXT NOT NULL,
+    rated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

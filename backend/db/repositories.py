@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import aiosqlite
 
-from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry, RecommendationRun, Recommendation, WatchSignal
+from backend.db.models import Video, FeedCache, Thumbnail, AuthToken, WatchHistoryEntry, RecommendationRun, Recommendation, WatchSignal, VideoRating
 from backend.services.token_crypto import encrypt_token, decrypt_token
 
 
@@ -460,3 +460,30 @@ class WatchSignalRepo:
             )
             for r in rows
         ]
+
+
+class VideoRatingRepo:
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def upsert(self, video_id: str, rating: str) -> None:
+        await self._db.execute(
+            "INSERT OR REPLACE INTO video_ratings (video_id, rating, rated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (video_id, rating),
+        )
+        await self._db.commit()
+
+    async def get(self, video_id: str) -> str | None:
+        async with self._db.execute(
+            "SELECT rating FROM video_ratings WHERE video_id = ?", (video_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row["rating"] if row else None
+
+    async def get_recent(self, limit: int = 50) -> list[dict]:
+        async with self._db.execute(
+            "SELECT video_id, rating, rated_at FROM video_ratings ORDER BY rated_at DESC LIMIT ?",
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [{"video_id": r["video_id"], "rating": r["rating"], "rated_at": r["rated_at"]} for r in rows]
