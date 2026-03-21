@@ -168,3 +168,52 @@ async def sync_recommendations(payload: SyncPayload):
             ))
 
     return {"status": "ok", "count": len(recs)}
+
+
+class EnqueueBatchPayload(BaseModel):
+    videos: list[SyncVideoItem]
+    threshold: float = 0.7
+
+
+@router.post("/download/enqueue-batch")
+async def enqueue_batch_download(payload: EnqueueBatchPayload, request: Request):
+    queue = getattr(request.app.state, "download_queue", None)
+    if queue is None:
+        return {"status": "error", "message": "Download queue not available"}
+
+    db = await get_db()
+    video_repo = VideoRepo(db)
+
+    above_threshold = [v for v in payload.videos if v.score >= payload.threshold]
+    above_threshold.sort(key=lambda v: v.score, reverse=True)
+
+    enqueued = []
+    for v in above_threshold:
+        existing = await video_repo.get(v.id)
+        if existing and existing.cache_status in ("cached", "pre-cached"):
+            continue
+        await queue.enqueue(v.id)
+        enqueued.append(v.id)
+
+    return {"status": "ok", "enqueued": len(enqueued), "video_ids": enqueued}
+
+
+class BandwidthUpdate(BaseModel):
+    rate_mbps: float
+
+
+@router.get("/download/bandwidth")
+async def get_bandwidth(request: Request):
+    bw = getattr(request.app.state, "bandwidth_manager", None)
+    if bw is None:
+        return {"rate_mbps": 0}
+    return bw.status()
+
+
+@router.put("/download/bandwidth")
+async def set_bandwidth(body: BandwidthUpdate, request: Request):
+    bw = getattr(request.app.state, "bandwidth_manager", None)
+    if bw is None:
+        return {"status": "error", "message": "Bandwidth manager not available"}
+    bw.rate_mbps = body.rate_mbps
+    return {"status": "ok", "rate_mbps": bw.rate_mbps}

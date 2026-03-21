@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
     from backend.services.watch_signal_aggregator import WatchSignalAggregator
     app.state.signal_aggregator = WatchSignalAggregator(db)
 
+    # Initialize bandwidth manager
+    from backend.services.bandwidth import BandwidthManager
+    app.state.bandwidth_manager = BandwidthManager()
+
     # Start periodic yt-dlp updater (weekly)
     import asyncio
     ytdlp_task = asyncio.create_task(periodic_ytdlp_update())
