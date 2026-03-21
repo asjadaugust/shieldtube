@@ -29,8 +29,7 @@ class Embedder:
         for name in models_to_try:
             model_size = MODEL_SIZES_MB.get(name, 200)
             if budget_mb < model_size and self.config["models"].get("auto_fallback"):
-                logger.info(f"Skipping {name} ({model_size}MB) — only {budget_mb:.0f}MB available")
-                continue
+                logger.info(f"Low RAM: {name} ({model_size}MB) may exceed {budget_mb:.0f}MB budget")
             try:
                 model = SentenceTransformer(name)
                 self.model_name = name
