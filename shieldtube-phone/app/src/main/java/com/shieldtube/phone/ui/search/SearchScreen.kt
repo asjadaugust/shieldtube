@@ -24,6 +24,8 @@ import com.shieldtube.phone.ui.components.VideoGrid
 fun SearchScreen(
     viewModel: SearchViewModel,
     onVideoClick: (VideoItem) -> Unit,
+    onDownloadToPhone: ((VideoItem) -> Unit)? = null,
+    onDownloadToServer: ((VideoItem) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val baseUrl by viewModel.baseUrl.collectAsState()
@@ -60,6 +62,8 @@ fun SearchScreen(
                 isLoading = uiState.isLoading,
                 error = uiState.error,
                 onRetry = { viewModel.updateQuery(uiState.query) },
+                onDownloadToPhone = onDownloadToPhone,
+                onDownloadToServer = onDownloadToServer,
             )
         }
     }

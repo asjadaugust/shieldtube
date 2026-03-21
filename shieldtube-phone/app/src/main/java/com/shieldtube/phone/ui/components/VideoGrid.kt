@@ -19,6 +19,8 @@ fun VideoGrid(
     isLoading: Boolean = false,
     error: String? = null,
     onRetry: () -> Unit = {},
+    onDownloadToPhone: ((VideoItem) -> Unit)? = null,
+    onDownloadToServer: ((VideoItem) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     when {
@@ -44,6 +46,8 @@ fun VideoGrid(
                     video = video,
                     baseUrl = baseUrl,
                     onClick = { onVideoClick(video) },
+                    onDownloadToPhone = onDownloadToPhone,
+                    onDownloadToServer = onDownloadToServer,
                 )
             }
         }

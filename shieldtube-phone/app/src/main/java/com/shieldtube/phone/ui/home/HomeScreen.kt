@@ -36,6 +36,8 @@ private val TABS = listOf(
 fun HomeScreen(
     viewModel: HomeViewModel,
     onVideoClick: (VideoItem) -> Unit,
+    onDownloadToPhone: ((VideoItem) -> Unit)? = null,
+    onDownloadToServer: ((VideoItem) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val baseUrl by viewModel.baseUrl.collectAsState()
@@ -83,6 +85,8 @@ fun HomeScreen(
                 isLoading = uiState.isLoading,
                 error = uiState.error,
                 onRetry = { viewModel.loadFeed(uiState.selectedTab) },
+                onDownloadToPhone = onDownloadToPhone,
+                onDownloadToServer = onDownloadToServer,
             )
 
             PullToRefreshContainer(

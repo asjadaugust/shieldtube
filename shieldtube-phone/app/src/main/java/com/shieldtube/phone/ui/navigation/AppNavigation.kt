@@ -2,7 +2,7 @@ package com.shieldtube.phone.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -20,12 +20,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.shieldtube.phone.ui.downloads.DownloadsScreen
+import com.shieldtube.phone.ui.downloads.DownloadsViewModel
 import com.shieldtube.phone.ui.home.HomeScreen
 import com.shieldtube.phone.ui.home.HomeViewModel
 import com.shieldtube.phone.ui.player.PlayerScreen
 import com.shieldtube.phone.ui.player.PlayerViewModel
 import com.shieldtube.phone.ui.search.SearchScreen
 import com.shieldtube.phone.ui.search.SearchViewModel
+import com.shieldtube.phone.ui.settings.SettingsScreen
+import com.shieldtube.phone.ui.settings.SettingsViewModel
 
 enum class Screen(
     val route: String,
@@ -34,7 +38,7 @@ enum class Screen(
 ) {
     Home(route = "home", label = "Home", icon = Icons.Default.Home),
     Search(route = "search", label = "Search", icon = Icons.Default.Search),
-    Downloads(route = "downloads", label = "Downloads", icon = Icons.Default.PlayArrow),
+    Downloads(route = "downloads", label = "Downloads", icon = Icons.Default.KeyboardArrowDown),
     Settings(route = "settings", label = "Settings", icon = Icons.Default.Settings),
 }
 
@@ -81,17 +85,45 @@ fun AppNavigation() {
         ) {
             composable(Screen.Home.route) {
                 val vm: HomeViewModel = hiltViewModel()
-                HomeScreen(vm) { video -> navController.navigate("player/${video.id}") }
+                val downloadsVm: DownloadsViewModel = hiltViewModel()
+                HomeScreen(
+                    viewModel = vm,
+                    onVideoClick = { video -> navController.navigate("player/${video.id}") },
+                    onDownloadToPhone = { video -> downloadsVm.startPhoneDownload(video) },
+                    onDownloadToServer = { video -> downloadsVm.enqueueServer(video.id) },
+                )
             }
             composable(Screen.Search.route) {
                 val vm: SearchViewModel = hiltViewModel()
-                SearchScreen(vm) { video -> navController.navigate("player/${video.id}") }
+                val downloadsVm: DownloadsViewModel = hiltViewModel()
+                SearchScreen(
+                    viewModel = vm,
+                    onVideoClick = { video -> navController.navigate("player/${video.id}") },
+                    onDownloadToPhone = { video -> downloadsVm.startPhoneDownload(video) },
+                    onDownloadToServer = { video -> downloadsVm.enqueueServer(video.id) },
+                )
             }
             composable(Screen.Downloads.route) {
-                Text("Downloads — coming soon")
+                val vm: DownloadsViewModel = hiltViewModel()
+                DownloadsScreen(
+                    viewModel = vm,
+                    onPlayLocal = { videoId -> navController.navigate("player/$videoId") },
+                    onPlayServer = { videoId -> navController.navigate("player/$videoId") },
+                )
             }
             composable(Screen.Settings.route) {
-                Text("Settings — coming soon")
+                val vm: SettingsViewModel = hiltViewModel()
+                SettingsScreen(
+                    viewModel = vm,
+                    onDisconnected = {
+                        // Navigate to root; MainActivity will redirect to SetupScreen
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                inclusive = true
+                            }
+                        }
+                    },
+                )
             }
             composable("player/{videoId}") { _ ->
                 val vm: PlayerViewModel = hiltViewModel()

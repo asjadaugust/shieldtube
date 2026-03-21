@@ -1,6 +1,7 @@
 package com.shieldtube.phone.di
 
 import android.content.Context
+import androidx.work.WorkManager
 import com.shieldtube.phone.data.api.AuthInterceptor
 import com.shieldtube.phone.data.api.ShieldTubeApi
 import com.shieldtube.phone.data.db.AppDatabase
@@ -81,4 +82,9 @@ object AppModule {
     @Singleton
     fun provideDownloadDao(db: AppDatabase): LocalDownloadDao =
         db.downloadDao()
+
+    @Provides
+    @Singleton
+    fun provideWorkManager(@ApplicationContext ctx: Context): WorkManager =
+        WorkManager.getInstance(ctx)
 }
