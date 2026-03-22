@@ -28,6 +28,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.PlayerView
 import com.shieldtube.api.ApiClient
 import com.shieldtube.api.Chapter
+import com.shieldtube.api.PlaybackStatusBody
 import com.shieldtube.api.ProgressBody
 import com.shieldtube.api.SponsorSegment
 import com.shieldtube.api.SubtitleTrack
@@ -81,6 +82,11 @@ class PlaybackFragment : Fragment() {
     private var availableFormats: List<VideoFormat> = emptyList()
     private var qualityOverlay: LinearLayout? = null
     private var qualityOverlayVisible: Boolean = false
+
+    // Remote control state
+    private var commandPollJob: Job? = null
+    private var statusReportJob: Job? = null
+    private var currentTitle: String = ""
 
     private var controlsHideJob: Job? = null
     private val CONTROLS_HIDE_DELAY = 4000L
@@ -290,6 +296,20 @@ class PlaybackFragment : Fragment() {
                         }
                     }
 
+                    // Fetch video title for remote status reporting
+                    lifecycleScope.launch {
+                        try {
+                            val meta = ApiClient.api.getVideoMeta(videoId)
+                            currentTitle = meta.title
+                        } catch (_: Exception) {}
+                    }
+
+                    // Remote control: poll for commands from phone (every 500ms)
+                    startCommandPolling(exoPlayer)
+
+                    // Remote control: report playback status to phone (every 1s)
+                    startStatusReporting(videoId, exoPlayer)
+
                     // Report play/pause/completed events
                     exoPlayer.addListener(object : Player.Listener {
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -366,6 +386,52 @@ class PlaybackFragment : Fragment() {
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to report progress: ${e.message}")
                     }
+                }
+            }
+        }
+    }
+
+    private fun startCommandPolling(exoPlayer: ExoPlayer) {
+        commandPollJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(500)
+                try {
+                    val response = ApiClient.api.getPlaybackCommands()
+                    for (cmd in response.commands) {
+                        when (cmd.action) {
+                            "pause" -> exoPlayer.pause()
+                            "resume" -> exoPlayer.play()
+                            "toggle" -> if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            "seek" -> exoPlayer.seekTo((cmd.value?.toDoubleOrNull()?.times(1000))?.toLong() ?: 0)
+                            "speed" -> {
+                                val newSpeed = cmd.value?.toFloatOrNull() ?: 1f
+                                currentSpeed = newSpeed
+                                exoPlayer.setPlaybackParameters(PlaybackParameters(newSpeed))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to poll commands: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun startStatusReporting(videoId: String, exoPlayer: ExoPlayer) {
+        statusReportJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(1000)
+                try {
+                    ApiClient.api.updatePlaybackStatus(PlaybackStatusBody(
+                        videoId = videoId,
+                        title = currentTitle,
+                        positionMs = exoPlayer.currentPosition,
+                        durationMs = exoPlayer.duration,
+                        isPlaying = exoPlayer.isPlaying,
+                        speed = exoPlayer.playbackParameters.speed
+                    ))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to report status: ${e.message}")
                 }
             }
         }
@@ -757,7 +823,7 @@ class PlaybackFragment : Fragment() {
     }
 
     private fun releasePlayer() {
-        // Send final progress report
+        // Send final progress report and clear remote playback status
         videoId?.let { vid ->
             player?.let { p ->
                 if (p.currentPosition > 0) {
@@ -779,6 +845,18 @@ class PlaybackFragment : Fragment() {
                 }
             }
         }
+        // Clear remote playback status so phone exits remote control mode
+        lifecycleScope.launch {
+            try {
+                ApiClient.api.clearPlaybackStatus()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to clear playback status: ${e.message}")
+            }
+        }
+        commandPollJob?.cancel()
+        commandPollJob = null
+        statusReportJob?.cancel()
+        statusReportJob = null
         progressJob?.cancel()
         progressJob = null
         skipCheckJob?.cancel()
@@ -797,6 +875,7 @@ class PlaybackFragment : Fragment() {
         currentSubtitleLang = null
         subtitleOverlay = null
         subtitleOverlayVisible = false
+        currentTitle = ""
         currentSpeed = 1.0f
         speedOverlay?.visibility = View.GONE
         speedOverlay = null

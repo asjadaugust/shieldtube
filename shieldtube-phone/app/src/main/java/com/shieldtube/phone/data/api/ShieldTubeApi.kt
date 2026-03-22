@@ -40,4 +40,10 @@ interface ShieldTubeApi {
 
     @GET("api/cache/status")
     suspend fun cacheStatus(): CacheStatusResponse
+
+    @POST("api/playback/command")
+    suspend fun sendPlaybackCommand(@Body body: PlaybackCommandBody): Unit
+
+    @GET("api/playback/status")
+    suspend fun getPlaybackStatus(): PlaybackStatus
 }

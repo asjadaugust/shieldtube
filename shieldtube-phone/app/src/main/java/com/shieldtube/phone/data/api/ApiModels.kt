@@ -103,3 +103,20 @@ data class CacheStatusResponse(
     @Json(name = "used_gb") val usedGb: Double,
     @Json(name = "total_gb") val totalGb: Double,
 )
+
+// Playback remote control models
+@JsonClass(generateAdapter = true)
+data class PlaybackCommandBody(
+    @Json(name = "action") val action: String,
+    @Json(name = "value") val value: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PlaybackStatus(
+    @Json(name = "video_id") val videoId: String?,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "position_ms") val positionMs: Long = 0,
+    @Json(name = "duration_ms") val durationMs: Long = 0,
+    @Json(name = "is_playing") val isPlaying: Boolean = false,
+    @Json(name = "speed") val speed: Float = 1.0f,
+)

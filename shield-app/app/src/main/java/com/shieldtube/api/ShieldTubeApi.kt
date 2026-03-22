@@ -1,8 +1,10 @@
 package com.shieldtube.api
 
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -51,4 +53,13 @@ interface ShieldTubeApi {
 
     @GET("/api/auth/callback")
     suspend fun authCallback(@Query("device_code") deviceCode: String): AuthCallbackResponse
+
+    @GET("/api/playback/commands")
+    suspend fun getPlaybackCommands(): PlaybackCommandsResponse
+
+    @PUT("/api/playback/status")
+    suspend fun updatePlaybackStatus(@Body body: PlaybackStatusBody)
+
+    @DELETE("/api/playback/status")
+    suspend fun clearPlaybackStatus()
 }

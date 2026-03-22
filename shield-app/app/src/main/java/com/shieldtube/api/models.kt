@@ -91,3 +91,22 @@ data class DeviceFlowResponse(
 )
 
 data class AuthCallbackResponse(val status: String)
+
+// Playback remote control models
+data class PlaybackCommand(
+    val action: String,
+    val value: String?
+)
+
+data class PlaybackCommandsResponse(
+    val commands: List<PlaybackCommand>
+)
+
+data class PlaybackStatusBody(
+    @SerializedName("video_id") val videoId: String,
+    val title: String,
+    @SerializedName("position_ms") val positionMs: Long,
+    @SerializedName("duration_ms") val durationMs: Long,
+    @SerializedName("is_playing") val isPlaying: Boolean,
+    val speed: Float = 1.0f
+)
