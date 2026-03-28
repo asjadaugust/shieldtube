@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize bandwidth manager
     from backend.services.bandwidth import BandwidthManager
-    app.state.bandwidth_manager = BandwidthManager()
+    app.state.bandwidth_manager = BandwidthManager(rate_mbps=5.0)
 
     # Start periodic yt-dlp updater (weekly)
     import asyncio
@@ -112,7 +112,7 @@ async def generic_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 
-from backend.api.routers import video, feed, search, auth, watch, cache, cast, dashboard, recommend, rate  # noqa: E402
+from backend.api.routers import video, feed, search, auth, watch, cache, cast, dashboard, recommend, rate, shorts  # noqa: E402
 
 app.include_router(video.router, prefix="/api")
 app.include_router(feed.router, prefix="/api")
@@ -124,6 +124,7 @@ app.include_router(cast.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(recommend.router, prefix="/api")
 app.include_router(rate.router, prefix="/api")
+app.include_router(shorts.router, prefix="/api")
 
 # Serve dashboard static files
 _dashboard_dir = Path(__file__).parent.parent / "dashboard"
