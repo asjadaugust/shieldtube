@@ -212,5 +212,9 @@ class ShortsPlayerFragment : Fragment() {
         player?.release()
         player = null
         playerView?.player = null
+        playerView = null
+        overlayView = null
+        titleView = null
+        channelView = null
     }
 }
