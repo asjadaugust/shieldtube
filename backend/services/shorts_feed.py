@@ -119,6 +119,7 @@ async def get_recommended_shorts(
     )
     rows = await cursor.fetchall()
     if not rows:
+        _CACHE[cache_key] = (time.monotonic(), [])
         return []
 
     all_shorts: list[dict] = []

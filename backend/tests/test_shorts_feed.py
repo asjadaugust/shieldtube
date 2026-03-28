@@ -6,6 +6,14 @@ from unittest.mock import AsyncMock, patch
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.fixture(autouse=True)
+def clear_shorts_cache():
+    from backend.services import shorts_feed
+    shorts_feed._CACHE.clear()
+    yield
+    shorts_feed._CACHE.clear()
+
+
 def _make_mock_db(rows):
     cursor = AsyncMock()
     cursor.fetchall = AsyncMock(return_value=rows)
@@ -17,7 +25,6 @@ def _make_mock_db(rows):
 async def test_recommended_returns_empty_when_no_channels():
     """No watch history → no top channels → empty list."""
     from backend.services import shorts_feed
-    shorts_feed._CACHE.clear()
 
     db = _make_mock_db([])
     result = await shorts_feed.get_recommended_shorts(db)
@@ -34,7 +41,6 @@ async def test_recommended_returns_cached_result():
 
     assert len(result) == 1
     assert result[0]["id"] == "abc"
-    shorts_feed._CACHE.clear()
 
 
 async def test_trending_returns_cached_result():
@@ -46,13 +52,11 @@ async def test_trending_returns_cached_result():
 
     assert len(result) == 1
     assert result[0]["id"] == "xyz"
-    shorts_feed._CACHE.clear()
 
 
 async def test_recommended_skips_failed_channels():
     """If one channel scrape fails, result still contains others."""
     from backend.services import shorts_feed
-    shorts_feed._CACHE.clear()
 
     rows = [
         {"channel_id": "UC_GOOD", "channel_name": "Good Channel", "watch_count": 10},
@@ -73,4 +77,3 @@ async def test_recommended_skips_failed_channels():
 
     assert len(result) == 1
     assert result[0]["id"] == "v1"
-    shorts_feed._CACHE.clear()
