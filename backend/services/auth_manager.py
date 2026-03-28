@@ -35,26 +35,25 @@ class AuthManager:
             refresh_token = decrypt_token(row["refresh_token"]) if row["refresh_token"] else None
             expires_at_str = row["expires_at"]
 
-            # Parse expiry — None means never-expires (unlikely but safe to treat as valid)
             if expires_at_str is None:
+                # No expiry recorded — treat as expired to force refresh.
+                # Bootstrapped tokens (no refresh_token) fall through to
+                # the env-var fallback below.
+                expired = True
+            else:
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_str)
+                    if expires_at.tzinfo is None:
+                        expires_at = expires_at.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+                expired = datetime.now(timezone.utc) >= expires_at
+
+            if not expired:
                 return access_token
 
-            try:
-                expires_at = datetime.fromisoformat(expires_at_str)
-                # Ensure timezone-aware for comparison
-                if expires_at.tzinfo is None:
-                    expires_at = expires_at.replace(tzinfo=timezone.utc)
-            except ValueError:
-                # Unparseable expiry — treat as expired and attempt refresh
-                expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-
-            now = datetime.now(timezone.utc)
-
-            if now < expires_at:
-                # Token still valid
-                return access_token
-
-            # Token expired — try to refresh
+            # Token expired or no expiry — try to refresh
             if refresh_token:
                 token_data = await self.refresh_token_request(refresh_token)
                 new_access_token = token_data["access_token"]

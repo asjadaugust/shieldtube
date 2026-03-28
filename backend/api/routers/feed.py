@@ -15,23 +15,47 @@ from backend.services.precache import load_rules, match_videos
 router = APIRouter()
 
 
-def _build_response(feed_type: str, videos: list[dict], from_cache: bool, cached_at) -> dict:
+async def _build_response(feed_type: str, videos: list[dict], from_cache: bool, cached_at) -> dict:
     """Normalise a list of video dicts into the standard feed response."""
+    db = await get_db()
+    video_ids = [v["id"] for v in videos]
+    # Batch-fetch watch progress for all videos
+    watch_progress = {}
+    if video_ids:
+        placeholders = ",".join("?" for _ in video_ids)
+        rows = await db.execute_fetchall(
+            f"SELECT video_id, position_seconds, duration, completed FROM watch_history WHERE video_id IN ({placeholders})",
+            video_ids,
+        )
+        for row in rows:
+            dur = row["duration"]
+            pos = row["position_seconds"] or 0
+            pct = (pos / dur) if dur and dur > 0 else 0.0
+            watch_progress[row["video_id"]] = {
+                "watch_percentage": round(min(pct, 1.0), 3),
+                "completed": bool(row["completed"]),
+            }
+
+    result_videos = []
+    for v in videos:
+        vid = v["id"]
+        wp = watch_progress.get(vid, {})
+        result_videos.append({
+            "id": vid,
+            "title": v.get("title", ""),
+            "channel_name": v.get("channel_name", ""),
+            "channel_id": v.get("channel_id", ""),
+            "view_count": v.get("view_count"),
+            "duration": v.get("duration"),
+            "published_at": v.get("published_at"),
+            "thumbnail_url": f"/api/video/{vid}/thumbnail?res=maxres",
+            "watch_percentage": wp.get("watch_percentage"),
+            "completed": wp.get("completed"),
+        })
+
     return {
         "feed_type": feed_type,
-        "videos": [
-            {
-                "id": v["id"],
-                "title": v.get("title", ""),
-                "channel_name": v.get("channel_name", ""),
-                "channel_id": v.get("channel_id", ""),
-                "view_count": v.get("view_count"),
-                "duration": v.get("duration"),
-                "published_at": v.get("published_at"),
-                "thumbnail_url": f"/api/video/{v['id']}/thumbnail?res=maxres",
-            }
-            for v in videos
-        ],
+        "videos": result_videos,
         "cached_at": cached_at,
         "from_cache": from_cache,
     }
@@ -55,21 +79,34 @@ async def _check_precache_rules(videos: list[dict], app):
 
 @router.get("/feed/home")
 async def get_home_feed(request: Request):
-    """Return the YouTube most-popular videos feed."""
+    """Return the YouTube most-popular videos feed. Falls back to cached data on API error."""
     db = await get_db()
     auth_manager = AuthManager(db)
     youtube_api = YouTubeAPI(auth_manager, db)
     thumb_cache = ThumbnailCache(db)
     video_repo = VideoRepo(db)
 
-    videos, from_cache, cached_at = await youtube_api.get_home_feed()
+    try:
+        videos, from_cache, cached_at = await youtube_api.get_home_feed()
 
-    if not from_cache:
-        await video_repo.upsert_many_from_dicts(videos)
-        asyncio.create_task(thumb_cache.cache_thumbnails(videos))
-        asyncio.create_task(_check_precache_rules(videos, request.app))
+        if not from_cache:
+            await video_repo.upsert_many_from_dicts(videos)
+            asyncio.create_task(thumb_cache.cache_thumbnails(videos))
+            asyncio.create_task(_check_precache_rules(videos, request.app))
 
-    return _build_response("home", videos, from_cache, cached_at)
+        return await _build_response("home", videos, from_cache, cached_at)
+    except Exception:
+        # API quota exceeded or other error — serve cached data
+        cached = await db.execute(
+            "SELECT video_ids_json, fetched_at FROM feed_cache WHERE feed_type = 'home'"
+        )
+        row = await cached.fetchone()
+        if row:
+            import json as _json
+            video_ids = _json.loads(row["video_ids_json"])
+            videos = await youtube_api._load_cached_videos(video_ids)
+            return _build_response("home", videos, True, row["fetched_at"])
+        return _build_response("home", [], True, None)
 
 
 @router.get("/feed/subscriptions")
@@ -88,7 +125,7 @@ async def get_subscriptions_feed(request: Request):
         asyncio.create_task(thumb_cache.cache_thumbnails(videos))
         asyncio.create_task(_check_precache_rules(videos, request.app))
 
-    return _build_response("subscriptions", videos, from_cache, cached_at)
+    return await _build_response("subscriptions", videos, from_cache, cached_at)
 
 
 @router.get("/feed/watch-later")
@@ -106,4 +143,4 @@ async def get_watch_later_feed(request: Request):
         await video_repo.upsert_many_from_dicts(videos)
         asyncio.create_task(thumb_cache.cache_thumbnails(videos))
 
-    return _build_response("watch_later", videos, from_cache, cached_at)
+    return await _build_response("watch_later", videos, from_cache, cached_at)

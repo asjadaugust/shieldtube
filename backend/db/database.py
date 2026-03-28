@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 import aiosqlite
 from pathlib import Path
@@ -5,6 +6,7 @@ from pathlib import Path
 from backend.config import settings
 
 _db: aiosqlite.Connection | None = None
+_db_write_lock = asyncio.Lock()
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
@@ -13,6 +15,11 @@ async def get_db() -> aiosqlite.Connection:
     if _db is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
     return _db
+
+
+def get_db_write_lock() -> asyncio.Lock:
+    """Get the write lock for serializing DB write operations."""
+    return _db_write_lock
 
 
 async def init_db() -> None:

@@ -13,9 +13,8 @@ from backend.db.repositories import VideoRepo
 
 logger = logging.getLogger(__name__)
 
-HOME_INTERVAL = 900         # 15 minutes
-SUBS_INTERVAL = 300         # 5 minutes
-WATCH_LATER_INTERVAL = 900  # 15 minutes
+HOME_INTERVAL = 3600        # 1 hour (1 API unit per refresh)
+WATCH_LATER_INTERVAL = 3600 # 1 hour
 
 
 class FeedRefresher:
@@ -39,7 +38,6 @@ class FeedRefresher:
 
     async def _refresh_loop(self):
         last_home = 0.0
-        last_subs = 0.0
         last_watch_later = 0.0
 
         # Wait a bit before first refresh (let the app fully start)
@@ -52,10 +50,6 @@ class FeedRefresher:
                 if now - last_home >= HOME_INTERVAL:
                     await self._refresh_home()
                     last_home = time.time()
-
-                if now - last_subs >= SUBS_INTERVAL:
-                    await self._refresh_subscriptions()
-                    last_subs = time.time()
 
                 if now - last_watch_later >= WATCH_LATER_INTERVAL:
                     await self._refresh_watch_later()
@@ -87,26 +81,6 @@ class FeedRefresher:
                 logger.info("Home feed unchanged (ETag match)")
         except Exception as e:
             logger.error(f"Home feed refresh failed: {e}")
-
-    async def _refresh_subscriptions(self):
-        logger.info("Refreshing subscriptions feed...")
-        try:
-            auth = AuthManager(self._db)
-            api = YouTubeAPI(auth, self._db)
-            thumb = ThumbnailCache(self._db)
-            video_repo = VideoRepo(self._db)
-
-            videos, from_cache, _ = await api.get_subscriptions()
-
-            if not from_cache:
-                await video_repo.upsert_many_from_dicts(videos)
-                await thumb.cache_thumbnails(videos)
-                await self._check_precache(videos)
-                logger.info(f"Subscriptions refreshed: {len(videos)} videos")
-            else:
-                logger.info("Subscriptions unchanged (ETag match)")
-        except Exception as e:
-            logger.error(f"Subscriptions refresh failed: {e}")
 
     async def _refresh_watch_later(self):
         logger.info("Refreshing Watch Later feed...")

@@ -23,6 +23,7 @@ class Video:
     created_at: str | None = None
     updated_at: str | None = None
     cached_at: str | None = None
+    download_source: str | None = None
     chapters_json: str | None = None
 
 

@@ -21,12 +21,14 @@ class Settings(BaseSettings):
 
     # Download settings
     download_wait_timeout: int = 30
+    ytdlp_concurrent_fragments: int = 5
+    download_max_parallel: int = 3
 
     # Security
     api_secret: str = ""
     token_encryption_key: str = ""
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

@@ -75,6 +75,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ShieldTube API", version="0.3.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def sw_no_cache(request, call_next):
+    """Prevent Cloudflare and browsers from caching the service worker."""
+    response = await call_next(request)
+    if request.url.path.endswith("/sw.js"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 app.add_middleware(SharedSecretMiddleware, secret=settings.api_secret)
 
 

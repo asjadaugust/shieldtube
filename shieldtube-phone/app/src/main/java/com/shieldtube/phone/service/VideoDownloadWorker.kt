@@ -36,16 +36,23 @@ class VideoDownloadWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         val videoId = inputData.getString("video_id") ?: return Result.failure()
+        val audioOnly = inputData.getBoolean("audio_only", false)
 
-        setForeground(createForegroundInfo(videoId))
+        setForeground(createForegroundInfo(videoId, audioOnly))
 
         val baseUrl = lanDetector.getStreamBaseUrl()
-        val streamUrl = "$baseUrl/api/video/$videoId/stream"
+        val streamUrl = if (audioOnly) {
+            "$baseUrl/api/video/$videoId/audio"
+        } else {
+            "$baseUrl/api/video/$videoId/stream"
+        }
         val secret = prefs.apiSecret.first()
 
-        val videosDir = applicationContext.getExternalFilesDir("videos")
+        val subDir = if (audioOnly) "audio" else "videos"
+        val ext = if (audioOnly) "mp3" else "mp4"
+        val filesDir = applicationContext.getExternalFilesDir(subDir)
             ?: return Result.failure()
-        val file = File(videosDir, "$videoId.mp4")
+        val file = File(filesDir, "$videoId.$ext")
 
         val client = buildTrustAllClient()
         val request = Request.Builder()
@@ -88,7 +95,7 @@ class VideoDownloadWorker @AssistedInject constructor(
         }
     }
 
-    private fun createForegroundInfo(videoId: String): ForegroundInfo {
+    private fun createForegroundInfo(videoId: String, audioOnly: Boolean = false): ForegroundInfo {
         val channelId = "downloads"
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -97,7 +104,7 @@ class VideoDownloadWorker @AssistedInject constructor(
             )
         }
         val notification = NotificationCompat.Builder(applicationContext, channelId)
-            .setContentTitle("Downloading video")
+            .setContentTitle(if (audioOnly) "Downloading MP3" else "Downloading video")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
             .build()

@@ -83,6 +83,9 @@ async def feed_history():
     video_ids = [e.video_id for e in entries]
     videos = await video_repo.get_many(video_ids)
 
+    # Build progress lookup from watch history entries
+    progress_by_id = {e.video_id: e for e in entries}
+
     return {
         "feed_type": "history",
         "videos": [
@@ -95,6 +98,10 @@ async def feed_history():
                 "duration": v.duration,
                 "published_at": v.published_at,
                 "thumbnail_url": f"/api/video/{v.id}/thumbnail?res=maxres",
+                "watch_percentage": round(
+                    min((progress_by_id[v.id].position_seconds / progress_by_id[v.id].duration), 1.0), 3
+                ) if v.id in progress_by_id and progress_by_id[v.id].duration else None,
+                "completed": bool(progress_by_id[v.id].completed) if v.id in progress_by_id else None,
             }
             for v in videos
         ],

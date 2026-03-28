@@ -22,6 +22,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -88,6 +94,8 @@ fun DownloadsScreen(
                 error = uiState.error,
                 baseUrl = baseUrl,
                 onPlay = { onPlayServer(it) },
+                onCopyToPhone = { viewModel.copyServerToPhone(it) },
+                onDownloadMp3 = { viewModel.downloadMp3(it) },
                 onRefresh = { viewModel.loadServerData() },
             )
         }
@@ -256,6 +264,8 @@ private fun ServerDownloadsTab(
     error: String?,
     baseUrl: String,
     onPlay: (String) -> Unit,
+    onCopyToPhone: (LibraryVideo) -> Unit,
+    onDownloadMp3: (LibraryVideo) -> Unit,
     onRefresh: () -> Unit,
 ) {
     if (isLoading && active.isEmpty() && library.isEmpty()) {
@@ -316,6 +326,8 @@ private fun ServerDownloadsTab(
                     video = video,
                     baseUrl = baseUrl,
                     onClick = { onPlay(video.id) },
+                    onCopyToPhone = { onCopyToPhone(video) },
+                    onDownloadMp3 = { onDownloadMp3(video) },
                 )
             }
         }
@@ -373,13 +385,13 @@ private fun ActiveDownloadRow(
                     )
                 }
                 CircularProgressIndicator(
-                    progress = { download.percent / 100f },
+                    progress = { download.percent.toFloat() / 100f },
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 3.dp,
                 )
             }
             LinearProgressIndicator(
-                progress = { download.percent / 100f },
+                progress = { download.percent.toFloat() / 100f },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(3.dp),
@@ -393,7 +405,11 @@ private fun LibraryVideoRow(
     video: LibraryVideo,
     baseUrl: String,
     onClick: () -> Unit,
+    onCopyToPhone: () -> Unit = {},
+    onDownloadMp3: () -> Unit = {},
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -438,6 +454,29 @@ private fun LibraryVideoRow(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            // Action menu button
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Text("⋮", style = MaterialTheme.typography.titleLarge)
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Play") },
+                        onClick = { menuExpanded = false; onClick() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Copy to Phone") },
+                        onClick = { menuExpanded = false; onCopyToPhone() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Download MP3") },
+                        onClick = { menuExpanded = false; onDownloadMp3() },
                     )
                 }
             }

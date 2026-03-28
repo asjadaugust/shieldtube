@@ -151,7 +151,7 @@ bash config/generate-cert.sh
 
 ```bash
 uvicorn backend.api.main:app \
-    --host 0.0.0.0 --port 8443 \
+    --host 0.0.0.0 --port 9443 \
     --ssl-keyfile config/certs/key.pem \
     --ssl-certfile config/certs/cert.pem
 ```
@@ -167,13 +167,13 @@ cd shield-app
 
 ```bash
 # Should return the dashboard
-curl -k https://localhost:8443/dashboard/
+curl -k https://localhost:9443/dashboard/
 
 # Should return 401 (if API_SECRET is set)
-curl -k https://localhost:8443/api/feed/home
+curl -k https://localhost:9443/api/feed/home
 
 # Should return feed data
-curl -k -H "X-ShieldTube-Secret: your-secret" https://localhost:8443/api/feed/home
+curl -k -H "X-ShieldTube-Secret: your-secret" https://localhost:9443/api/feed/home
 ```
 
 ---
@@ -189,7 +189,7 @@ Create a `.env` file in the project root (see `config/.env.example`):
 | `GOOGLE_CLIENT_ID` | Yes | — | OAuth app ID from [Google Cloud Console](https://console.cloud.google.com/) |
 | `GOOGLE_CLIENT_SECRET` | Yes | — | OAuth app secret |
 | `BACKEND_HOST` | No | `0.0.0.0` | Server bind address |
-| `BACKEND_PORT` | No | `8080` | Server port (HTTPS uses 8443) |
+| `BACKEND_PORT` | No | `8080` | Server port (HTTPS uses 9443) |
 | `CACHE_DIR` | No | `./cache` | Video cache directory |
 | `FFMPEG_THREADS` | No | `2` | FFmpeg parallelism (2 for NAS, higher for laptop) |
 | `API_SECRET` | No | — | Shared secret for API auth. Empty = dev mode (no auth). |
@@ -339,7 +339,7 @@ bash config/generate-cert.sh
 docker-compose up -d
 ```
 
-The API serves on `https://localhost:8443`.
+The API serves on `https://localhost:9443`.
 
 ```yaml
 # docker-compose.yml mounts:
@@ -358,7 +358,7 @@ docker build -t shieldtube/api:latest backend/
 ```bash
 pip install -r backend/requirements.txt
 uvicorn backend.api.main:app \
-    --host 0.0.0.0 --port 8443 \
+    --host 0.0.0.0 --port 9443 \
     --ssl-keyfile config/certs/key.pem \
     --ssl-certfile config/certs/cert.pem
 ```

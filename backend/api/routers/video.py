@@ -49,6 +49,36 @@ async def stream_video(video_id: str, request: Request, quality: str = "auto"):
                 headers={"Retry-After": "5"},
             )
 
+    # Cached files: single-open streaming (fast on NAS, single HTTP connection for tunnel)
+    if state.status == "cached":
+        range_header = request.headers.get("range")
+        if range_header:
+            range_spec = range_header.replace("bytes=", "")
+            parts = range_spec.split("-")
+            range_start = int(parts[0]) if parts[0] else 0
+            range_end = int(parts[1]) if parts[1] else total_size - 1
+            content_length = range_end - range_start + 1
+            return StreamingResponse(
+                _stream_cached_file(video_path, range_start, range_end),
+                status_code=206,
+                headers={
+                    "Content-Range": f"bytes {range_start}-{range_end}/{total_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(content_length),
+                    "Content-Type": "video/mp4",
+                },
+            )
+        return StreamingResponse(
+            _stream_cached_file(video_path, 0, total_size - 1),
+            status_code=200,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(total_size),
+                "Content-Type": "video/mp4",
+            },
+        )
+
+    # Growing files (actively downloading): use growing file iterator
     range_header = request.headers.get("range")
 
     if range_header:
@@ -69,15 +99,7 @@ async def stream_video(video_id: str, request: Request, quality: str = "auto"):
             },
         )
 
-    # Non-range request
-    if state.status == "cached":
-        return FileResponse(
-            video_path,
-            media_type="video/mp4",
-            headers={"Accept-Ranges": "bytes"},
-        )
-
-    # Growing file — stream all bytes with expected Content-Length
+    # Non-range request for growing file
     return StreamingResponse(
         _iter_growing_file(video_path, 0, total_size - 1, state),
         status_code=200,
@@ -87,6 +109,19 @@ async def stream_video(video_id: str, request: Request, quality: str = "auto"):
             "Content-Type": "video/mp4",
         },
     )
+
+
+async def _stream_cached_file(file_path: Path, start: int, end: int):
+    """Stream a cached file with a single open — efficient for NAS and tunnel delivery."""
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = f.read(min(remaining, 262144))  # 256KB chunks
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
 
 
 async def _iter_growing_file(file_path: Path, start: int, end: int, state):
@@ -128,6 +163,39 @@ async def _iter_growing_file(file_path: Path, start: int, end: int, state):
             if (file_path.stat().st_size if file_path.exists() else 0) <= position:
                 if state.status != "cached":
                     break  # Timeout
+
+
+@router.get("/video/{video_id}/audio")
+async def get_audio(video_id: str, request: Request):
+    """Extract and serve audio as MP3 from a cached video.
+
+    Uses create_subprocess_exec (not shell) — video_id is validated as a path component
+    by FastAPI and the file path is constructed from the cache directory, not user input.
+    """
+    dm = request.app.state.download_manager
+    cache_dir = Path(dm._cache_dir)
+    video_path = cache_dir / f"{video_id}.mp4"
+    mp3_path = cache_dir / f"{video_id}.mp3"
+
+    if not video_path.exists():
+        return JSONResponse(status_code=404, content={"error": "Video not cached"})
+
+    # Convert if MP3 doesn't exist yet
+    if not mp3_path.exists():
+        from asyncio.subprocess import DEVNULL, PIPE
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", str(video_path),
+            "-vn", "-acodec", "libmp3lame", "-ab", "192k",
+            str(mp3_path),
+            stdout=DEVNULL, stderr=PIPE,
+        )
+        _, stderr = await process.communicate()
+        if process.returncode != 0:
+            return JSONResponse(status_code=500, content={
+                "error": "Audio extraction failed",
+            })
+
+    return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"{video_id}.mp3")
 
 
 @router.get("/sponsorblock/{video_id}")
@@ -190,6 +258,8 @@ async def get_thumbnail(video_id: str, res: str = Query(default="maxres")):
     db = await get_db()
     cache = ThumbnailCache(db)
     local_path = await cache.get_thumbnail_path(video_id, resolution=res)
+    if local_path == "__unavailable__":
+        return JSONResponse(status_code=404, content={"error": "No thumbnail available"})
     if local_path is not None:
         return FileResponse(local_path, media_type="image/jpeg")
     youtube_url = ThumbnailCache.get_youtube_thumbnail_url(video_id, resolution=res)

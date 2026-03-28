@@ -24,18 +24,18 @@ class BrowseFragment : BrowseSupportFragment() {
 
     companion object {
         private const val HEADER_HOME = 0L
-        private const val HEADER_SUBSCRIPTIONS = 1L
-        private const val HEADER_WATCH_LATER = 2L
+        private const val HEADER_HISTORY = 2L
         private const val HEADER_FOR_YOU = 3L
+        private const val HEADER_DOWNLOADS = 4L
     }
 
-    // Top-level adapter holds the three rows
+    // Top-level adapter holds the rows
     private lateinit var rowsAdapter: ArrayObjectAdapter
     // Per-row content adapters
+    private val downloadsAdapter = ArrayObjectAdapter(CardPresenter())
     private val forYouAdapter = ArrayObjectAdapter(CardPresenter())
     private val homeAdapter = ArrayObjectAdapter(CardPresenter())
-    private val subsAdapter = ArrayObjectAdapter(CardPresenter())
-    private val watchLaterAdapter = ArrayObjectAdapter(CardPresenter())
+    private val historyAdapter = ArrayObjectAdapter(CardPresenter())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,22 +54,42 @@ class BrowseFragment : BrowseSupportFragment() {
         if (cached.isNotEmpty()) {
             forYouAdapter.addAll(0, cached)
         }
+        loadFeedForHeader(HEADER_DOWNLOADS)
         loadFeedForHeader(HEADER_FOR_YOU)
         loadFeedForHeader(HEADER_HOME)
-        loadFeedForHeader(HEADER_SUBSCRIPTIONS)
-        loadFeedForHeader(HEADER_WATCH_LATER)
+        loadFeedForHeader(HEADER_HISTORY)
+    }
 
+    override fun onResume() {
+        super.onResume()
+        startCastPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        castPollJob?.cancel()
+        castPollJob = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        castPollJob?.cancel()
+    }
+
+    private fun startCastPolling() {
+        castPollJob?.cancel()
         castPollJob = lifecycleScope.launch {
             while (isActive) {
-                delay(5000) // Poll every 5 seconds
+                delay(5000)
                 try {
                     val nowPlaying = ApiClient.api.getNowPlaying()
                     if (nowPlaying.videoId != null) {
-                        // Navigate to playback
+                        castPollJob?.cancel()
                         requireActivity().supportFragmentManager.beginTransaction()
                             .replace(android.R.id.content, PlaybackFragment.newInstance(nowPlaying.videoId))
                             .addToBackStack("playback")
                             .commit()
+                        return@launch
                     }
                 } catch (e: Exception) {
                     // Silently ignore polling errors
@@ -78,24 +98,20 @@ class BrowseFragment : BrowseSupportFragment() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        castPollJob?.cancel()
-    }
-
     private fun setupHeaders() {
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
+
+        val downloadsHeader = HeaderItem(HEADER_DOWNLOADS, "Downloads")
+        rowsAdapter.add(ListRow(downloadsHeader, downloadsAdapter))
 
         val forYouHeader = HeaderItem(HEADER_FOR_YOU, "For You")
         rowsAdapter.add(ListRow(forYouHeader, forYouAdapter))
 
         val homeHeader = HeaderItem(HEADER_HOME, "Home")
-        val subsHeader = HeaderItem(HEADER_SUBSCRIPTIONS, "Subscriptions")
-        val watchLaterHeader = HeaderItem(HEADER_WATCH_LATER, "Watch Later")
-
         rowsAdapter.add(ListRow(homeHeader, homeAdapter))
-        rowsAdapter.add(ListRow(subsHeader, subsAdapter))
-        rowsAdapter.add(ListRow(watchLaterHeader, watchLaterAdapter))
+
+        val historyHeader = HeaderItem(HEADER_HISTORY, "History")
+        rowsAdapter.add(ListRow(historyHeader, historyAdapter))
 
         adapter = rowsAdapter
     }
@@ -138,10 +154,10 @@ class BrowseFragment : BrowseSupportFragment() {
             try {
                 android.util.Log.d("ShieldTube", "loadFeed: requesting feed for header=$headerId")
                 val feedResponse = when (headerId) {
+                    HEADER_DOWNLOADS -> ApiClient.api.getDownloadLibrary()
                     HEADER_FOR_YOU -> ApiClient.api.getFeedRecommended()
                     HEADER_HOME -> ApiClient.api.getFeedHome()
-                    HEADER_SUBSCRIPTIONS -> ApiClient.api.getFeedSubscriptions()
-                    HEADER_WATCH_LATER -> ApiClient.api.getFeedWatchLater()
+                    HEADER_HISTORY -> ApiClient.api.getFeedHistory()
                     else -> return@launch
                 }
                 android.util.Log.d("ShieldTube", "loadFeed: got ${feedResponse.videos.size} videos for header=$headerId")
@@ -168,10 +184,10 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun updateRowContent(headerId: Long, videos: List<Video>) {
         val targetAdapter = when (headerId) {
+            HEADER_DOWNLOADS -> downloadsAdapter
             HEADER_FOR_YOU -> forYouAdapter
             HEADER_HOME -> homeAdapter
-            HEADER_SUBSCRIPTIONS -> subsAdapter
-            HEADER_WATCH_LATER -> watchLaterAdapter
+            HEADER_HISTORY -> historyAdapter
             else -> return
         }
         targetAdapter.clear()

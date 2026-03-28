@@ -1,6 +1,9 @@
 """Recommendation endpoints: serve, sync, and status."""
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.db.database import get_db
@@ -196,6 +199,124 @@ async def enqueue_batch_download(payload: EnqueueBatchPayload, request: Request)
         enqueued.append(v.id)
 
     return {"status": "ok", "enqueued": len(enqueued), "video_ids": enqueued}
+
+
+class SingleEnqueuePayload(BaseModel):
+    video_id: str
+    quality: str = "auto"
+
+
+@router.post("/download/enqueue")
+async def enqueue_single_download(payload: SingleEnqueuePayload, request: Request):
+    queue = getattr(request.app.state, "download_queue", None)
+    if queue is None:
+        return JSONResponse(status_code=503, content={"status": "error", "message": "Download queue not available"})
+
+    db = await get_db()
+    video_repo = VideoRepo(db)
+    existing = await video_repo.get(payload.video_id)
+    if existing and existing.cache_status in ("cached", "pre-cached"):
+        return {"status": "already_cached"}
+
+    # Ensure video row exists (may not be in DB if only seen in feed)
+    await db.execute(
+        "INSERT OR IGNORE INTO videos (id, title, channel_name, channel_id) VALUES (?, '', '', '')",
+        (payload.video_id,),
+    )
+    # Mark as manual download
+    await db.execute(
+        "UPDATE videos SET download_source = 'manual' WHERE id = ?",
+        (payload.video_id,),
+    )
+    await db.commit()
+
+    await queue.enqueue(payload.video_id)
+    return {"status": "ok", "video_id": payload.video_id}
+
+
+@router.get("/download/active")
+async def get_active_downloads(request: Request):
+    dm = getattr(request.app.state, "download_manager", None)
+    queue = getattr(request.app.state, "download_queue", None)
+    db = await get_db()
+
+    active = []
+    if dm:
+        cache_dir = Path(dm._cache_dir) if hasattr(dm, '_cache_dir') else None
+        for cache_key, state in dm._active.items():
+            bytes_downloaded = 0
+            if state.file_path.exists():
+                bytes_downloaded = state.file_path.stat().st_size
+            # Also check yt-dlp temp files (e.g. {id}_temp.f303.webm)
+            if bytes_downloaded == 0 and cache_dir:
+                for tmp in cache_dir.glob(f"{state.video_id}_temp*"):
+                    bytes_downloaded += tmp.stat().st_size
+
+            # Look up title from DB
+            title = state.video_id
+            channel_name = ""
+            cursor = await db.execute(
+                "SELECT title, channel_name FROM videos WHERE id = ?",
+                (state.video_id,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                title = row["title"] or state.video_id
+                channel_name = row["channel_name"] or ""
+
+            active.append({
+                "video_id": state.video_id,
+                "title": title,
+                "channel_name": channel_name,
+                "status": state.status,
+                "percent": round((bytes_downloaded / (state.expected_size or 1)) * 100, 1),
+                "bytes_downloaded": bytes_downloaded,
+                "bytes_total": state.expected_size,
+            })
+
+    return {
+        "active": active,
+        "queue_size": queue.pending_count if queue else 0,
+    }
+
+
+@router.get("/download/library")
+async def get_download_library(request: Request):
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT id, title, channel_name, channel_id, duration,
+                  cache_status, download_source, cached_at, cached_video_path
+           FROM videos
+           WHERE cache_status IN ('cached', 'pre-cached')
+           ORDER BY cached_at DESC"""
+    )
+
+    from backend.config import settings
+    cache_dir = Path(settings.cache_dir)
+
+    videos = []
+    for row in rows:
+        file_path = cache_dir / f"{row['id']}.mp4"
+        file_size = file_path.stat().st_size if file_path.exists() else 0
+        videos.append({
+            "id": row["id"],
+            "title": row["title"],
+            "channel_name": row["channel_name"],
+            "channel_id": row["channel_id"],
+            "duration": row["duration"],
+            "cache_status": row["cache_status"],
+            "download_source": row["download_source"] or "auto",
+            "cached_at": row["cached_at"],
+            "file_size": file_size,
+            "thumbnail_url": f"/api/video/{row['id']}/thumbnail?res=maxres",
+        })
+
+    return {
+        "feed_type": "downloads",
+        "videos": videos,
+        "cached_at": None,
+        "from_cache": False,
+    }
 
 
 class BandwidthUpdate(BaseModel):

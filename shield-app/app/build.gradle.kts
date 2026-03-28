@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.shieldtube"
-        minSdk = 31
+        minSdk = 30
         targetSdk = 34
         versionCode = 1
         versionName = "0.2.0"
@@ -47,6 +47,7 @@ dependencies {
     // Media3 ExoPlayer
     implementation("androidx.media3:media3-exoplayer:1.2.1")
     implementation("androidx.media3:media3-ui:1.2.1")
+    implementation("androidx.media3:media3-datasource:1.2.1")
 
     // Glide — image loading with disk cache
     implementation("com.github.bumptech.glide:glide:4.16.0")

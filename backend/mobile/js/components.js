@@ -10,9 +10,11 @@ const VideoCard = {
    * @returns {string} HTML string
    */
   render(video) {
-    const thumbUrl = video.thumbnail
+    const hasThumbnail = video.thumbnail || video.thumbnail_url;
+    const thumbUrl = hasThumbnail
       ? `${API.baseUrl}/api/video/${encodeURIComponent(video.id)}/thumbnail`
       : '';
+    const channel = video.channel || video.channel_name || '';
     const durationStr = VideoCard.formatDuration(video.duration);
 
     // All interpolated values are escaped via VideoCard.esc() to prevent XSS
@@ -25,10 +27,13 @@ const VideoCard = {
             : ''}
           ${durationStr ? `<span class="video-card__duration">${durationStr}</span>` : ''}
           ${video.cached ? '<span class="video-card__cached"></span>' : ''}
+          <button class="video-card__download-btn" data-video-id="${VideoCard.esc(video.id)}" aria-label="Download">
+              <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
+          </button>
         </div>
         <div class="video-card__info">
           <h3 class="video-card__title">${VideoCard.esc(video.title || 'Untitled')}</h3>
-          <p class="video-card__channel">${VideoCard.esc(video.channel || '')}</p>
+          <p class="video-card__channel">${VideoCard.esc(channel)}</p>
         </div>
       </article>
     `;
@@ -121,6 +126,20 @@ const Feed = {
 
     // Event delegation for card clicks
     grid.addEventListener('click', (e) => {
+      // Download button click
+      const dlBtn = e.target.closest('.video-card__download-btn');
+      if (dlBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const videoId = dlBtn.dataset.videoId;
+        if (typeof DownloadTracker !== 'undefined') {
+          DownloadTracker.enqueue(videoId);
+          // Update button to show spinner
+          Feed._updateDownloadBtn(dlBtn, 'downloading', 0);
+        }
+        return;
+      }
+
       const card = e.target.closest('.video-card');
       if (!card) return;
       const videoId = card.dataset.videoId;
@@ -138,6 +157,87 @@ const Feed = {
         }
       }
     });
+
+    // Initialize download button states
+    Feed._initDownloadButtons(grid);
+
+    // Listen for download state changes
+    if (typeof DownloadTracker !== 'undefined') {
+      const updateHandler = (downloads) => {
+        for (const [videoId, state] of Object.entries(downloads)) {
+          const btn = grid.querySelector(`.video-card__download-btn[data-video-id="${videoId}"]`);
+          if (btn) Feed._updateDownloadBtn(btn, state.status, state.percent);
+        }
+      };
+      DownloadTracker.onChange(updateHandler);
+    }
+  },
+
+  _updateDownloadBtn(btn, status, percent) {
+    if (!btn) return;
+    // Clear existing content
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    btn.className = 'video-card__download-btn';
+
+    if (status === 'cached') {
+      btn.classList.add('video-card__download-btn--cached');
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z');
+      svg.appendChild(path);
+      btn.appendChild(svg);
+    } else if (status === 'downloading' || status === 'queued') {
+      const r = 7;
+      const circ = 2 * Math.PI * r;
+      const offset = circ - (circ * (percent || 0) / 100);
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 20 20');
+      svg.setAttribute('class', 'mini-ring');
+      const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      track.setAttribute('class', 'mini-ring__track');
+      track.setAttribute('cx', '10');
+      track.setAttribute('cy', '10');
+      track.setAttribute('r', String(r));
+      svg.appendChild(track);
+      const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      arc.setAttribute('class', 'mini-ring__arc');
+      arc.setAttribute('cx', '10');
+      arc.setAttribute('cy', '10');
+      arc.setAttribute('r', String(r));
+      arc.setAttribute('stroke-dasharray', String(circ));
+      arc.setAttribute('stroke-dashoffset', String(offset));
+      svg.appendChild(arc);
+      btn.appendChild(svg);
+    } else if (status === 'error') {
+      btn.classList.add('video-card__download-btn--error');
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z');
+      svg.appendChild(path);
+      btn.appendChild(svg);
+    } else {
+      // Default download arrow
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z');
+      svg.appendChild(path);
+      btn.appendChild(svg);
+    }
+  },
+
+  _initDownloadButtons(container) {
+    if (typeof DownloadTracker === 'undefined') return;
+    const btns = container.querySelectorAll('.video-card__download-btn');
+    for (const btn of btns) {
+      const videoId = btn.dataset.videoId;
+      const status = DownloadTracker.getStatus(videoId);
+      if (status) {
+        Feed._updateDownloadBtn(btn, status.status, status.percent);
+      }
+    }
   },
 };
 
@@ -159,9 +259,11 @@ const BottomSheet = {
     // Clear previous content safely
     while (content.firstChild) content.removeChild(content.firstChild);
 
-    const thumbUrl = video.thumbnail
+    const hasThumbnail = video.thumbnail || video.thumbnail_url;
+    const thumbUrl = hasThumbnail
       ? `${API.baseUrl}/api/video/${encodeURIComponent(video.id)}/thumbnail`
       : '';
+    const channel = video.channel || video.channel_name || '';
 
     // Build DOM elements safely
     if (thumbUrl) {
@@ -179,9 +281,9 @@ const BottomSheet = {
 
     const meta = document.createElement('div');
     meta.className = 'bottom-sheet__meta';
-    if (video.channel) {
+    if (channel) {
       const s = document.createElement('span');
-      s.textContent = video.channel;
+      s.textContent = channel;
       meta.appendChild(s);
     }
     if (video.duration) {
@@ -189,9 +291,9 @@ const BottomSheet = {
       s.textContent = VideoCard.formatDuration(video.duration);
       meta.appendChild(s);
     }
-    if (video.views) {
+    if (video.views || video.view_count) {
       const s = document.createElement('span');
-      s.textContent = `${BottomSheet.formatViews(video.views)} views`;
+      s.textContent = `${BottomSheet.formatViews(video.views || video.view_count)} views`;
       meta.appendChild(s);
     }
     content.appendChild(meta);
@@ -203,6 +305,7 @@ const BottomSheet = {
     const actionDefs = [
       { action: 'play', label: 'Play', primary: true, icon: 'M8 5v14l11-7z' },
       { action: 'cast', label: 'Cast', primary: false, icon: 'M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11zm20-7H3c-1.1 0-2 .9-2 2v3h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z' },
+      { action: 'download', label: 'Download', primary: false, icon: 'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z' },
       { action: 'rate-love', label: 'Love', primary: false, icon: 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' },
     ];
 
@@ -276,6 +379,12 @@ const BottomSheet = {
           BottomSheet.hide();
         } catch {
           Toast.show('Failed to cast', 3000, 'error');
+        }
+        break;
+      case 'download':
+        if (typeof DownloadTracker !== 'undefined') {
+          DownloadTracker.enqueue(video.id);
+          if (typeof Toast !== 'undefined') Toast.show('Download queued');
         }
         break;
       case 'rate-love':

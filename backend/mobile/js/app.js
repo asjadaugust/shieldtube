@@ -17,6 +17,8 @@ const App = {
       this._showSetup();
     } else {
       this._hideSetup();
+      DownloadTracker.init();
+      ProgressRing.init();
       this._initRouting();
       this._navigateToHash();
     }
@@ -123,7 +125,7 @@ const App = {
 
   _navigateToHash() {
     const hash = (window.location.hash || '#home').slice(1);
-    const tab = ['home', 'search', 'train', 'settings'].includes(hash) ? hash : 'home';
+    const tab = ['home', 'search', 'downloads', 'train', 'settings'].includes(hash) ? hash : 'home';
 
     this._currentTab = tab;
     this._updateActiveNav(tab);
@@ -155,6 +157,9 @@ const App = {
       case 'train':
         await this._renderTrainScreen(content);
         break;
+      case 'downloads':
+        await DownloadsTab.render(content);
+        break;
       case 'settings':
         await this._renderSettingsScreen(content);
         break;
@@ -171,7 +176,6 @@ const App = {
     const feedTabs = [
       { id: 'recommended', label: 'For You' },
       { id: 'home', label: 'Home' },
-      { id: 'subscriptions', label: 'Subscriptions' },
       { id: 'history', label: 'History' },
     ];
 

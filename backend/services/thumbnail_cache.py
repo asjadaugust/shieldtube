@@ -44,7 +44,7 @@ class ThumbnailCache:
                 self._download_and_store(client, semaphore, v, thumb_dir)
                 for v in uncached
             ]
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _download_and_store(
         self,
@@ -55,21 +55,21 @@ class ThumbnailCache:
     ) -> None:
         video_id = video["id"]
         async with semaphore:
-            # Try maxres first
-            maxres_url = f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
-            response = await client.get(maxres_url)
-
-            if response.status_code == 404:
-                # Fall back to hqdefault
-                hq_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                response = await client.get(hq_url)
-
-            if response.status_code not in (200, 201):
-                raise httpx.HTTPStatusError(
-                    f"HTTP {response.status_code}",
-                    request=None,  # type: ignore[arg-type]
-                    response=response,
+            # Try resolutions in order of quality
+            for suffix in ("maxresdefault", "sddefault", "hqdefault", "default"):
+                url = f"https://i.ytimg.com/vi/{video_id}/{suffix}.jpg"
+                response = await client.get(url)
+                if response.status_code in (200, 201):
+                    break
+            else:
+                # All resolutions 404 — record a marker so we don't retry
+                await self._db.execute(
+                    "INSERT OR REPLACE INTO thumbnails (video_id, resolution, local_path, fetched_at, content_hash) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (video_id, "maxres", "__unavailable__", datetime.now(UTC).isoformat(), None),
                 )
+                await self._db.commit()
+                return
             content = response.content
 
         local_path = str(thumb_dir / f"{video_id}_maxres.jpg")
@@ -90,7 +90,11 @@ class ThumbnailCache:
         await self._db.commit()
 
     async def get_thumbnail_path(self, video_id: str, resolution: str = "maxres") -> str | None:
-        """Return the local path if cached and the file exists on disk, else None."""
+        """Return the local path if cached and the file exists on disk.
+
+        Returns ``None`` if not cached yet.
+        Returns ``"__unavailable__"`` if all YouTube resolutions were 404.
+        """
         async with self._db.execute(
             "SELECT local_path FROM thumbnails WHERE video_id = ? AND resolution = ?",
             (video_id, resolution),
@@ -101,6 +105,8 @@ class ThumbnailCache:
             return None
 
         local_path = row[0]
+        if local_path == "__unavailable__":
+            return "__unavailable__"
         if not Path(local_path).exists():
             return None
 

@@ -12,14 +12,14 @@ interface ShieldTubeApi {
     @GET("/api/feed/home")
     suspend fun getFeedHome(): FeedResponse
 
-    @GET("/api/feed/subscriptions")
-    suspend fun getFeedSubscriptions(): FeedResponse
-
-    @GET("/api/feed/watch-later")
-    suspend fun getFeedWatchLater(): FeedResponse
+    @GET("/api/feed/history")
+    suspend fun getFeedHistory(): FeedResponse
 
     @GET("/api/feed/recommended")
     suspend fun getFeedRecommended(): FeedResponse
+
+    @GET("/api/download/library")
+    suspend fun getDownloadLibrary(): FeedResponse
 
     @GET("/api/search")
     suspend fun search(@Query("q") query: String): FeedResponse

@@ -86,6 +86,8 @@ def resolve_stream(video_id: str, prefer_hdr: bool = True, quality: str = "auto"
             "audio_url": audio_url,
             "duration": info["duration"],
             "title": info["title"],
+            "channel_name": info.get("channel") or info.get("uploader") or "",
+            "channel_id": info.get("channel_id") or "",
             "filesize": filesize if filesize > 0 else 100_000_000,
             "chapters": info.get("chapters") or [],
             "subtitles": subtitles,

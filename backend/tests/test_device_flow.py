@@ -126,7 +126,7 @@ class TestAuthCallback:
         assert token.access_token == "ya29.new_access_token"
         assert token.refresh_token == "1//refresh_token_abc"
         assert token.token_type == "Bearer"
-        assert token.scopes == "youtube.readonly youtube.force-ssl openid email"
+        assert token.scopes == "youtube.readonly openid email"
         assert token.expires_at is not None
 
     async def test_callback_authorized_sets_expires_at(self, client, mem_db):

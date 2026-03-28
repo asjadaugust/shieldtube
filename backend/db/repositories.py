@@ -23,6 +23,8 @@ def _row_to_video(row: aiosqlite.Row) -> Video:
         last_accessed=row["last_accessed"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        cached_at=row["cached_at"] if "cached_at" in row.keys() else None,
+        download_source=row["download_source"] if "download_source" in row.keys() else None,
         chapters_json=row["chapters_json"] if "chapters_json" in row.keys() else None,
     )
 

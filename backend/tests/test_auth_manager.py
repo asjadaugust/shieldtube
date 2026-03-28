@@ -157,3 +157,18 @@ async def test_get_auth_headers_returns_bearer(db):
     manager = AuthManager(db)
     headers = await manager.get_auth_headers()
     assert headers == {"Authorization": "Bearer header-token"}
+
+
+@pytest.mark.asyncio
+async def test_get_token_null_expires_at_no_refresh_raises(db):
+    """Token with expires_at=NULL and no refresh_token raises ValueError."""
+    await db.execute(
+        "INSERT INTO auth_tokens (id, access_token, refresh_token, expires_at) VALUES (1, ?, ?, ?)",
+        ("stale-bootstrap-token", None, None),
+    )
+    await db.commit()
+    manager = AuthManager(db)
+    with patch("backend.services.auth_manager.settings") as mock_settings:
+        mock_settings.youtube_access_token = ""
+        with pytest.raises(ValueError, match="No OAuth token available"):
+            await manager.get_token()

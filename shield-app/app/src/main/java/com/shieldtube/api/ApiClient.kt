@@ -4,13 +4,17 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
 
 object ApiClient {
     // Must be public — CardPresenter references ApiClient.BASE_URL for thumbnail URLs
-    const val BASE_URL = "https://192.168.1.100:8443"
+    const val BASE_URL = "https://192.168.0.26:9443"
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(Interceptor { chain ->
                 val secret = com.shieldtube.BuildConfig.API_SECRET
                 val request = if (secret.isNotEmpty()) {

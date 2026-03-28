@@ -4,8 +4,20 @@ from backend.db.database import get_db
 from backend.db.repositories import AuthTokenRepo
 from backend.db.models import AuthToken
 from backend.services.device_flow import request_device_code, poll_for_token
+from backend.services.auth_manager import AuthManager
 
 router = APIRouter()
+
+
+@router.get("/auth/status")
+async def auth_status():
+    db = await get_db()
+    auth_manager = AuthManager(db)
+    try:
+        await auth_manager.get_token()
+        return {"authenticated": True}
+    except (ValueError, Exception):
+        return {"authenticated": False}
 
 
 @router.get("/auth/login")
@@ -36,7 +48,7 @@ async def auth_callback(device_code: str = Query(...)):
             refresh_token=result.get("refresh_token"),
             token_type=result.get("token_type", "Bearer"),
             expires_at=expires_at,
-            scopes="youtube.readonly youtube.force-ssl openid email",
+            scopes="youtube.readonly openid email",
             created_at=now.isoformat(),
             updated_at=now.isoformat(),
         ))

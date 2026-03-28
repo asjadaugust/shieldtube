@@ -8,11 +8,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +76,44 @@ fun VideoCard(
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f),
                     )
+                    // Download button (top-right of thumbnail)
+                    if (hasActions) {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.6f)),
+                        ) {
+                            androidx.compose.foundation.Canvas(
+                                modifier = Modifier.size(14.dp)
+                            ) {
+                                val w = size.width
+                                val h = size.height
+                                // Down arrow
+                                drawPath(
+                                    path = Path().apply {
+                                        moveTo(w * 0.5f, h * 0.05f)
+                                        lineTo(w * 0.5f, h * 0.6f)
+                                        moveTo(w * 0.2f, h * 0.4f)
+                                        lineTo(w * 0.5f, h * 0.7f)
+                                        lineTo(w * 0.8f, h * 0.4f)
+                                    },
+                                    color = Color.White,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
+                                )
+                                // Bottom bar
+                                drawRect(
+                                    color = Color.White,
+                                    topLeft = androidx.compose.ui.geometry.Offset(w * 0.2f, h * 0.85f),
+                                    size = androidx.compose.ui.geometry.Size(w * 0.6f, h * 0.08f),
+                                )
+                            }
+                        }
+                    }
+
                     video.duration?.let { duration ->
                         val formatted = formatDuration(duration)
                         if (formatted.isNotBlank()) {

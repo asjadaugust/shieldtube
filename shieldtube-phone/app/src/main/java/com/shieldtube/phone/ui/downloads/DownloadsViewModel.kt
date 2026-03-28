@@ -104,6 +104,53 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
+    fun copyServerToPhone(video: LibraryVideo) {
+        viewModelScope.launch {
+            // Reuse the same download worker — it downloads from the server stream URL
+            repository.addLocalDownload(
+                VideoItem(
+                    id = video.id,
+                    title = video.title,
+                    channelName = video.channelName,
+                    channelId = "",
+                    viewCount = null,
+                    duration = video.duration?.toString(),
+                    publishedAt = null,
+                    thumbnailUrl = null,
+                )
+            )
+            val workRequest = OneTimeWorkRequestBuilder<VideoDownloadWorker>()
+                .setInputData(workDataOf("video_id" to video.id))
+                .build()
+            workManager.enqueue(workRequest)
+        }
+    }
+
+    fun downloadMp3(video: LibraryVideo) {
+        viewModelScope.launch {
+            // Download MP3 from server's audio extraction endpoint
+            repository.addLocalDownload(
+                VideoItem(
+                    id = video.id,
+                    title = "${video.title} (MP3)",
+                    channelName = video.channelName,
+                    channelId = "",
+                    viewCount = null,
+                    duration = video.duration?.toString(),
+                    publishedAt = null,
+                    thumbnailUrl = null,
+                )
+            )
+            val workRequest = OneTimeWorkRequestBuilder<VideoDownloadWorker>()
+                .setInputData(workDataOf(
+                    "video_id" to video.id,
+                    "audio_only" to true,
+                ))
+                .build()
+            workManager.enqueue(workRequest)
+        }
+    }
+
     fun enqueueServer(videoId: String) {
         viewModelScope.launch {
             try {

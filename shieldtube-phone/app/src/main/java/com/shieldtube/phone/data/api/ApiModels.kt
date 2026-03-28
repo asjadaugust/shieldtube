@@ -65,7 +65,7 @@ data class ActiveDownload(
     @Json(name = "title") val title: String,
     @Json(name = "channel_name") val channelName: String,
     @Json(name = "status") val status: String,
-    @Json(name = "percent") val percent: Int,
+    @Json(name = "percent") val percent: Double,
     @Json(name = "bytes_downloaded") val bytesDownloaded: Long,
     @Json(name = "bytes_total") val bytesTotal: Long,
 )
@@ -95,7 +95,7 @@ data class LibraryResponse(
 
 @JsonClass(generateAdapter = true)
 data class CastBody(
-    @Json(name = "url") val url: String,
+    @Json(name = "video_id") val videoId: String,
 )
 
 @JsonClass(generateAdapter = true)

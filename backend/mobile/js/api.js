@@ -94,7 +94,7 @@ const API = {
       'recommended': '/api/feed/recommended',
     };
     const path = pathMap[type] || `/api/feed/${type}`;
-    return this.request(path);
+    return this.request(path, { timeout: 30000 });
   },
 
   /**
@@ -180,6 +180,24 @@ const API = {
       method: 'PUT',
       body: { rate_mbps: rateMbps },
     });
+  },
+
+  /** Enqueue a single video for download. */
+  async enqueueDownload(videoId, quality = 'auto') {
+    return this.request('/api/download/enqueue', {
+      method: 'POST',
+      body: { video_id: videoId, quality },
+    });
+  },
+
+  /** Get active downloads and queue state. */
+  async getActiveDownloads() {
+    return this.request('/api/download/active');
+  },
+
+  /** Get download library (all cached videos). */
+  async getDownloadLibrary() {
+    return this.request('/api/download/library');
   },
 
   /**

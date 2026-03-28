@@ -3,7 +3,7 @@ from backend.config import settings
 
 DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = "openid email https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl"
+SCOPES = "openid email https://www.googleapis.com/auth/youtube.readonly"
 
 
 async def request_device_code() -> dict:

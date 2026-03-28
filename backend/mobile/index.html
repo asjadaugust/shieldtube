@@ -14,8 +14,8 @@
   <link rel="icon" type="image/svg+xml" href="/mobile/icons/icon-192.svg">
   <link rel="apple-touch-icon" href="/mobile/icons/icon-192.svg">
 
-  <link rel="stylesheet" href="/mobile/css/theme.css">
-  <link rel="stylesheet" href="/mobile/css/app.css">
+  <link rel="stylesheet" href="/mobile/css/theme.css?v=5">
+  <link rel="stylesheet" href="/mobile/css/app.css?v=5">
 </head>
 <body>
   <!-- Setup Modal -->
@@ -97,6 +97,9 @@
       <div id="player-container" class="player-container"></div>
     </div>
 
+    <!-- Download Progress Ring -->
+    <div id="download-ring" class="download-ring" hidden></div>
+
     <!-- Bottom Navigation -->
     <nav id="bottom-nav" class="bottom-nav">
       <a href="#home" class="bottom-nav__item active" data-tab="home">
@@ -110,6 +113,12 @@
           <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
         </svg>
         <span class="bottom-nav__label">Search</span>
+      </a>
+      <a href="#downloads" class="bottom-nav__item" data-tab="downloads">
+        <svg class="bottom-nav__icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
+        </svg>
+        <span class="bottom-nav__label">Downloads</span>
       </a>
       <a href="#train" class="bottom-nav__item" data-tab="train">
         <svg class="bottom-nav__icon" viewBox="0 0 24 24" fill="currentColor">
@@ -126,15 +135,16 @@
     </nav>
   </div>
 
-  <script src="/mobile/js/api.js"></script>
-  <script src="/mobile/js/components.js"></script>
-  <script src="/mobile/js/player.js"></script>
-  <script src="/mobile/js/swipe.js"></script>
-  <script src="/mobile/js/app.js"></script>
+  <script src="/mobile/js/api.js?v=5"></script>
+  <script src="/mobile/js/components.js?v=5"></script>
+  <script src="/mobile/js/player.js?v=5"></script>
+  <script src="/mobile/js/swipe.js?v=5"></script>
+  <script src="/mobile/js/downloads.js?v=5"></script>
+  <script src="/mobile/js/app.js?v=5"></script>
 
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/mobile/sw.js')
+      navigator.serviceWorker.register('/mobile/sw.js?v=6')
         .then(reg => console.log('SW registered:', reg.scope))
         .catch(err => console.warn('SW registration failed:', err));
     }

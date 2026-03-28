@@ -11,7 +11,9 @@ data class Video(
     val duration: Int?,
     @SerializedName("published_at") val publishedAt: String?,
     @SerializedName("thumbnail_url") val thumbnailUrl: String,
-    @SerializedName("pre_cached") val preCached: Boolean = false
+    @SerializedName("pre_cached") val preCached: Boolean = false,
+    @SerializedName("watch_percentage") val watchPercentage: Float? = null,
+    val completed: Boolean? = null
 )
 
 data class FeedResponse(

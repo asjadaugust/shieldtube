@@ -18,13 +18,13 @@ The Docker image expects certs mounted at `/app/config/certs/`:
 docker-compose up -d
 ```
 
-The API serves on port **8443** over HTTPS.
+The API serves on port **9443** over HTTPS.
 
 ## Manual (without Docker)
 
 ```bash
 uvicorn backend.api.main:app \
-    --host 0.0.0.0 --port 8443 \
+    --host 0.0.0.0 --port 9443 \
     --ssl-keyfile config/certs/key.pem \
     --ssl-certfile config/certs/cert.pem
 ```
@@ -40,5 +40,5 @@ Install the `cert.pem` on the Shield device via:
 ## Verification
 
 ```bash
-curl -k https://localhost:8443/docs
+curl -k https://localhost:9443/docs
 ```

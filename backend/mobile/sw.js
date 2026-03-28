@@ -2,7 +2,7 @@
    ShieldTube Service Worker
    ================================================ */
 
-const CACHE_NAME = 'shieldtube-v1';
+const CACHE_NAME = 'shieldtube-v6';
 const THUMBNAIL_CACHE = 'shieldtube-thumbs-v1';
 const MAX_THUMBNAIL_ENTRIES = 200;
 
@@ -11,13 +11,14 @@ const STATIC_ASSETS = [
   '/mobile/',
   '/mobile/index.html',
   '/mobile/manifest.json',
-  '/mobile/css/theme.css',
-  '/mobile/css/app.css',
-  '/mobile/js/api.js',
-  '/mobile/js/components.js',
-  '/mobile/js/player.js',
-  '/mobile/js/swipe.js',
-  '/mobile/js/app.js',
+  '/mobile/css/theme.css?v=5',
+  '/mobile/css/app.css?v=5',
+  '/mobile/js/api.js?v=5',
+  '/mobile/js/components.js?v=5',
+  '/mobile/js/player.js?v=5',
+  '/mobile/js/swipe.js?v=5',
+  '/mobile/js/downloads.js?v=5',
+  '/mobile/js/app.js?v=5',
   '/mobile/icons/icon-192.svg',
   '/mobile/icons/icon-512.svg',
 ];
@@ -51,6 +52,16 @@ self.addEventListener('fetch', (event) => {
   // Thumbnail requests — cache-first with LRU eviction
   if (url.pathname.includes('/api/video/') && url.pathname.endsWith('/thumbnail')) {
     event.respondWith(thumbnailStrategy(event.request));
+    return;
+  }
+
+  // Video stream / subtitle requests — pass through directly, never cache
+  if (url.pathname.includes('/api/video/') && (url.pathname.endsWith('/stream') || url.pathname.includes('/subtitles'))) {
+    return;
+  }
+
+  // Download polling — always network, never cache
+  if (url.pathname.startsWith('/api/download/')) {
     return;
   }
 

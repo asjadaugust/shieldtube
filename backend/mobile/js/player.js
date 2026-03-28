@@ -449,9 +449,9 @@ const Player = {
     if (!this._video?.id || !this._el) return;
     try {
       await API.reportProgress(this._video.id, {
-        position: Math.floor(this._el.currentTime),
+        position_seconds: Math.floor(this._el.currentTime),
         duration: Math.floor(this._el.duration || 0),
-        status,
+        event: status,
       });
     } catch {
       // Silently fail

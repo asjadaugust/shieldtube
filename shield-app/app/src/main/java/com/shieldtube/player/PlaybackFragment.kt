@@ -10,9 +10,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import com.shieldtube.R
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
@@ -23,7 +26,9 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.PlayerView
 import com.shieldtube.api.ApiClient
@@ -70,6 +75,8 @@ class PlaybackFragment : Fragment() {
     private var subtitleTracks: List<SubtitleTrack> = emptyList()
     private var currentSubtitleLang: String? = null
     private var subtitleOverlay: LinearLayout? = null
+    private var subtitleScrollView: android.widget.ScrollView? = null // legacy, unused
+    private var subtitlePopupView: FrameLayout? = null
     private var subtitleOverlayVisible: Boolean = false
 
     // Playback speed state
@@ -89,7 +96,26 @@ class PlaybackFragment : Fragment() {
     private var currentTitle: String = ""
 
     private var controlsHideJob: Job? = null
-    private val CONTROLS_HIDE_DELAY = 4000L
+    private val CONTROLS_HIDE_DELAY = 5000L
+    private val QUICK_SEEK_HIDE_DELAY = 1000L
+    private val SEEK_STEP_MS = 15_000L
+
+    // Custom controls views
+    private var quickSeekBar: View? = null
+    private var quickSeekSeekbar: SeekBar? = null
+    private var quickSeekPosition: TextView? = null
+    private var quickSeekDuration: TextView? = null
+    private var fullControls: View? = null
+    private var controlsSeekbar: SeekBar? = null
+    private var controlsPosition: TextView? = null
+    private var controlsDuration: TextView? = null
+    private var controlsTitle: TextView? = null
+    private var controlsChannel: TextView? = null
+    private var btnPlayPause: ImageButton? = null
+    private var seekBarUpdateJob: Job? = null
+    private var quickSeekHideJob: Job? = null
+    private var currentTitle: String = ""
+    private var currentChannel: String = ""
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -101,8 +127,23 @@ class PlaybackFragment : Fragment() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            controllerShowTimeoutMs = -1 // We manage hide timing ourselves
-            controllerAutoShow = false
+            useController = false // We use our own custom controls
+            // Style subtitles: centered, semi-transparent background
+            subtitleView?.apply {
+                val style = androidx.media3.ui.CaptionStyleCompat(
+                    Color.WHITE,                           // foreground
+                    Color.parseColor("#80000000"),          // background (50% opacity black)
+                    Color.TRANSPARENT,                      // window
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE,
+                    Color.TRANSPARENT,                      // edge color
+                    null                                    // typeface
+                )
+                setApplyEmbeddedStyles(false)
+                setApplyEmbeddedFontSizes(false)
+                setStyle(style)
+                setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+                setBottomPaddingFraction(0.08f)
+            }
         }
 
         // Chapter title overlay: semi-transparent black background, white text, top-left
@@ -122,21 +163,25 @@ class PlaybackFragment : Fragment() {
         }
         chapterOverlay = overlay
 
-        // Subtitle selection overlay: vertical list on the left side, hidden by default
+        // Subtitle selection overlay: small centered popup
         val subtitleMenu = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        subtitleOverlay = subtitleMenu
+        val subtitlePopup = FrameLayout(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER_VERTICAL or Gravity.START
-            ).also { params ->
-                params.setMargins(48, 0, 0, 0)
-            }
+                Gravity.CENTER
+            )
             setBackgroundColor(Color.parseColor("#CC000000"))
-            setPadding(16, 16, 16, 16)
+            setPadding(48, 32, 48, 32)
             visibility = View.GONE
+            addView(subtitleMenu)
         }
-        subtitleOverlay = subtitleMenu
+        subtitleScrollView = null
+        subtitlePopupView = subtitlePopup
 
         val container = FrameLayout(requireContext()).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -147,7 +192,6 @@ class PlaybackFragment : Fragment() {
             isFocusableInTouchMode = true
             addView(playerView)
             addView(overlay)
-            addView(subtitleMenu)
             speedOverlay = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.parseColor("#CC000000"))
@@ -183,6 +227,37 @@ class PlaybackFragment : Fragment() {
                 )
             }
             addView(qualityOverlay)
+
+            // Custom controls overlay (YouTube TV style)
+            val controlsOverlay = inflater.inflate(R.layout.player_controls, this, false)
+            addView(controlsOverlay)
+            quickSeekBar = controlsOverlay.findViewById(R.id.quick_seek_bar)
+            quickSeekSeekbar = controlsOverlay.findViewById(R.id.quick_seek_seekbar)
+            quickSeekPosition = controlsOverlay.findViewById(R.id.quick_seek_position)
+            quickSeekDuration = controlsOverlay.findViewById(R.id.quick_seek_duration)
+            fullControls = controlsOverlay.findViewById(R.id.full_controls)
+            controlsSeekbar = controlsOverlay.findViewById(R.id.controls_seekbar)
+            controlsPosition = controlsOverlay.findViewById(R.id.controls_position)
+            controlsDuration = controlsOverlay.findViewById(R.id.controls_duration)
+            controlsTitle = controlsOverlay.findViewById(R.id.controls_title)
+            controlsChannel = controlsOverlay.findViewById(R.id.controls_channel)
+            btnPlayPause = controlsOverlay.findViewById(R.id.btn_play_pause)
+
+            // Wire up control buttons
+            btnPlayPause?.setOnClickListener { player?.let { p -> if (p.isPlaying) p.pause() else p.play() }; updatePlayPauseIcon() }
+            controlsOverlay.findViewById<ImageButton>(R.id.btn_rewind)?.setOnClickListener {
+                player?.let { p -> p.seekTo(maxOf(p.currentPosition - SEEK_STEP_MS, 0)) }
+            }
+            controlsOverlay.findViewById<ImageButton>(R.id.btn_forward)?.setOnClickListener {
+                player?.let { p -> p.seekTo(minOf(p.currentPosition + SEEK_STEP_MS, p.duration)) }
+            }
+            controlsOverlay.findViewById<ImageButton>(R.id.btn_prev_chapter)?.setOnClickListener { jumpToPreviousChapter() }
+            controlsOverlay.findViewById<TextView>(R.id.btn_cc)?.setOnClickListener { toggleSubtitleOverlay() }
+            controlsOverlay.findViewById<ImageButton>(R.id.btn_next_chapter)?.setOnClickListener { jumpToNextChapter() }
+
+            // Add subtitle popup ON TOP of controls
+            addView(subtitlePopup)
+
             setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     handleKeyDown(keyCode, event)
@@ -244,6 +319,8 @@ class PlaybackFragment : Fragment() {
                     lifecycleScope.launch {
                         try {
                             val meta = ApiClient.api.getVideoMeta(videoId)
+                            currentTitle = meta.title
+                            currentChannel = meta.channelName
                             if (meta.lastPositionSeconds > 0) {
                                 exoPlayer.seekTo(meta.lastPositionSeconds * 1000L)
                             }
@@ -552,9 +629,20 @@ class PlaybackFragment : Fragment() {
         val menu = subtitleOverlay ?: return
         menu.removeAllViews()
 
-        // Build option list: "Off" + one entry per language
+        // Build option list: "Off" + original language, English, Spanish only
+        val preferredLangs = setOf("en-orig", "en", "es")
+        val filteredTracks = subtitleTracks.filter { it.lang in preferredLangs }
+        // Sort: original first, then English, then Spanish
+        val sortedTracks = filteredTracks.sortedBy { track ->
+            when {
+                track.lang.contains("orig") -> 0
+                track.lang == "en" -> 1
+                track.lang == "es" -> 2
+                else -> 3
+            }
+        }
         val options: List<Pair<String?, String>> = listOf(null to "Off") +
-            subtitleTracks.map { track -> track.lang to track.name }
+            sortedTracks.map { track -> track.lang to track.name }
 
         if (options.size == 1) {
             // Only "Off" — no tracks available
@@ -562,25 +650,45 @@ class PlaybackFragment : Fragment() {
             return
         }
 
-        options.forEach { (lang, label) ->
+        options.forEachIndexed { index, (lang, label) ->
             val isSelected = lang == currentSubtitleLang
             val item = TextView(requireContext()).apply {
-                text = if (isSelected) "• $label" else "  $label"
-                setTextColor(if (isSelected) Color.YELLOW else Color.WHITE)
-                textSize = 18f
-                setPadding(16, 12, 48, 12)
+                text = if (isSelected) "● $label" else label
+                setTextColor(if (isSelected) Color.parseColor("#76B900") else Color.WHITE)
+                textSize = 16f
+                setPadding(48, 16, 48, 16)
+                gravity = Gravity.CENTER
+                isFocusable = true
+                isFocusableInTouchMode = true
+                setBackgroundResource(android.R.drawable.list_selector_background)
                 setOnClickListener { selectSubtitle(lang) }
+                setOnKeyListener { _, keyCode, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
+                        selectSubtitle(lang)
+                        true
+                    } else if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK) {
+                        hideSubtitleOverlay()
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
             menu.addView(item)
         }
 
-        menu.visibility = View.VISIBLE
+        subtitlePopupView?.visibility = View.VISIBLE
         subtitleOverlayVisible = true
+        // Hide full controls so they don't compete for focus
+        fullControls?.visibility = View.GONE
+        // Focus the first item so D-pad navigation works
+        menu.getChildAt(0)?.requestFocus()
     }
 
     private fun hideSubtitleOverlay() {
-        subtitleOverlay?.visibility = View.GONE
+        subtitlePopupView?.visibility = View.GONE
         subtitleOverlayVisible = false
+        view?.requestFocus()
     }
 
     /**
@@ -594,23 +702,36 @@ class PlaybackFragment : Fragment() {
         currentSubtitleLang = lang
         hideSubtitleOverlay()
 
+        val resumePosition = exoPlayer.currentPosition
+
+        // Use the same data source factory with API secret for all requests
+        val dataSourceFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(mapOf(
+                "X-ShieldTube-Secret" to com.shieldtube.BuildConfig.API_SECRET
+            ))
+
         val streamUrl = buildStreamUrl(vid)
-        val mediaItem = if (lang != null) {
+        val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+        val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
+            .createMediaSource(mediaItem)
+
+        if (lang != null) {
             val subtitleUri = Uri.parse("$BACKEND_HOST/api/video/$vid/subtitles/$lang")
             val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(lang)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
-            MediaItem.Builder()
-                .setUri(Uri.parse(streamUrl))
-                .setSubtitleConfigurations(listOf(subtitleConfig))
-                .build()
+            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+            exoPlayer.setMediaSource(mergedSource, resumePosition)
         } else {
-            MediaItem.fromUri(Uri.parse(streamUrl))
+            exoPlayer.setMediaSource(videoSource, resumePosition)
         }
 
-        val resumePosition = exoPlayer.currentPosition
-        exoPlayer.setMediaItem(mediaItem, resumePosition)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
 
@@ -707,23 +828,31 @@ class PlaybackFragment : Fragment() {
         selectedQuality = quality
         hideQualityOverlay()
 
+        val resumePosition = exoPlayer.currentPosition
+        val dataSourceFactory = DefaultHttpDataSource.Factory()
+            .setDefaultRequestProperties(mapOf(
+                "X-ShieldTube-Secret" to com.shieldtube.BuildConfig.API_SECRET
+            ))
         val streamUrl = buildStreamUrl(vid)
-        val mediaItem = if (currentSubtitleLang != null) {
+        val mediaItem = MediaItem.fromUri(Uri.parse(streamUrl))
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+        val videoSource = ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
+            .createMediaSource(mediaItem)
+
+        if (currentSubtitleLang != null) {
             val subtitleUri = Uri.parse("$BACKEND_HOST/api/video/$vid/subtitles/$currentSubtitleLang")
             val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                 .setMimeType(MimeTypes.TEXT_VTT)
                 .setLanguage(currentSubtitleLang!!)
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                 .build()
-            MediaItem.Builder()
-                .setUri(Uri.parse(streamUrl))
-                .setSubtitleConfigurations(listOf(subtitleConfig))
-                .build()
+            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+            exoPlayer.setMediaSource(MergingMediaSource(videoSource, subtitleSource), resumePosition)
         } else {
-            MediaItem.fromUri(Uri.parse(streamUrl))
+            exoPlayer.setMediaSource(videoSource, resumePosition)
         }
-
-        val resumePosition = exoPlayer.currentPosition
-        exoPlayer.setMediaItem(mediaItem, resumePosition)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
 
@@ -737,36 +866,36 @@ class PlaybackFragment : Fragment() {
             if (qualityOverlayVisible) { hideQualityOverlay(); return true }
             if (subtitleOverlayVisible) { hideSubtitleOverlay(); return true }
             if (speedOverlay?.visibility == View.VISIBLE) { speedOverlay?.visibility = View.GONE; return true }
-            // Controls visible → hide them and keep playing
-            if (playerView?.isControllerFullyVisible == true) {
-                hideControls()
-                return true
-            }
-            // Controls hidden → go back to browse
+            if (fullControls?.visibility == View.VISIBLE) { hideFullControls(); return true }
+            if (quickSeekBar?.visibility == View.VISIBLE) { hideQuickSeek(); return true }
             return false
         }
 
-        // Play/Pause buttons: toggle playback + show controls
+        // Play/Pause buttons (remote media keys)
         if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
             keyCode == KeyEvent.KEYCODE_MEDIA_PLAY ||
             keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE
         ) {
-            player?.let { p ->
-                if (p.isPlaying) p.pause() else p.play()
-            }
-            showControlsWithAutoHide()
+            player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+            updatePlayPauseIcon()
+            showFullControlsWithAutoHide()
             return true
         }
 
-        // OK/Select: if controls hidden → show controls + pause; if visible → toggle play/pause
+        // Center/Enter: confirm seek position, show full controls, or toggle play/pause
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            if (playerView?.isControllerFullyVisible != true) {
-                player?.pause()
-                showControlsWithAutoHide()
+            if (quickSeekBar?.visibility == View.VISIBLE) {
+                // Confirm seek position and resume
+                hideQuickSeek()
+                player?.play()
+                return true
+            }
+            if (fullControls?.visibility != View.VISIBLE) {
+                showFullControlsWithAutoHide()
+                btnPlayPause?.requestFocus()
             } else {
-                player?.let { p ->
-                    if (p.isPlaying) p.pause() else p.play()
-                }
+                player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+                updatePlayPauseIcon()
                 scheduleControlsHide()
             }
             return true
@@ -789,22 +918,68 @@ class PlaybackFragment : Fragment() {
             return true
         }
 
-        // D-pad: show controls (let PlayerView handle seek/scrub)
-        if (keyCode in listOf(
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN
-            )
-        ) {
-            showControlsWithAutoHide()
-            return false // Let PlayerView handle the actual seek
+        // D-pad left/right when full controls visible: let focus navigation work
+        if (fullControls?.visibility == View.VISIBLE) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                scheduleControlsHide()
+                return false // Let Android handle focus navigation
+            }
+        }
+
+        // D-pad left/right (no controls): quick seek ±15s
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            player?.let { p -> p.seekTo(minOf(p.currentPosition + SEEK_STEP_MS, p.duration)) }
+            showQuickSeek()
+            return true
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            player?.let { p -> p.seekTo(maxOf(p.currentPosition - SEEK_STEP_MS, 0)) }
+            showQuickSeek()
+            return true
+        }
+
+        // D-pad up (no controls): show full controls
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            showFullControlsWithAutoHide()
+            controlsSeekbar?.requestFocus()
+            return true
         }
 
         return false
     }
 
-    private fun showControlsWithAutoHide() {
-        playerView?.showController()
+    // --- Quick Seek Bar (D-pad left/right, auto-hide) ---
+
+    private fun showQuickSeek() {
+        fullControls?.visibility = View.GONE
+        quickSeekBar?.visibility = View.VISIBLE
+        player?.pause()
+        updateSeekBarPositions()
+    }
+
+    private fun hideQuickSeek() {
+        quickSeekBar?.visibility = View.GONE
+        quickSeekHideJob?.cancel()
+    }
+
+    // --- Full Controls (Center button, auto-hide) ---
+
+    private fun showFullControlsWithAutoHide() {
+        quickSeekBar?.visibility = View.GONE
+        fullControls?.visibility = View.VISIBLE
+        controlsTitle?.text = currentTitle
+        controlsChannel?.text = currentChannel
+        updatePlayPauseIcon()
+        updateSeekBarPositions()
+        startSeekBarUpdates()
         scheduleControlsHide()
+    }
+
+    private fun hideFullControls() {
+        fullControls?.visibility = View.GONE
+        controlsHideJob?.cancel()
+        seekBarUpdateJob?.cancel()
     }
 
     private fun scheduleControlsHide() {
@@ -818,8 +993,52 @@ class PlaybackFragment : Fragment() {
     }
 
     private fun hideControls() {
-        controlsHideJob?.cancel()
-        playerView?.hideController()
+        hideFullControls()
+        hideQuickSeek()
+    }
+
+    private fun updatePlayPauseIcon() {
+        val isPlaying = player?.isPlaying == true
+        btnPlayPause?.setImageResource(
+            if (isPlaying) android.R.drawable.ic_media_pause
+            else android.R.drawable.ic_media_play
+        )
+    }
+
+    private fun updateSeekBarPositions() {
+        val p = player ?: return
+        val pos = p.currentPosition
+        val dur = if (p.duration > 0) p.duration else 1L
+        val progress = ((pos * 1000) / dur).toInt()
+        val posText = formatTimeMs(pos)
+        val durText = formatTimeMs(dur)
+
+        quickSeekSeekbar?.progress = progress
+        quickSeekPosition?.text = posText
+        quickSeekDuration?.text = durText
+
+        controlsSeekbar?.progress = progress
+        controlsPosition?.text = posText
+        controlsDuration?.text = durText
+    }
+
+    private fun startSeekBarUpdates() {
+        seekBarUpdateJob?.cancel()
+        seekBarUpdateJob = lifecycleScope.launch {
+            while (isActive) {
+                updateSeekBarPositions()
+                updatePlayPauseIcon()
+                delay(500)
+            }
+        }
+    }
+
+    private fun formatTimeMs(ms: Long): String {
+        val totalSec = (ms / 1000).toInt()
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
     private fun releasePlayer() {
@@ -865,6 +1084,10 @@ class PlaybackFragment : Fragment() {
         chapterCheckJob = null
         controlsHideJob?.cancel()
         controlsHideJob = null
+        quickSeekHideJob?.cancel()
+        quickSeekHideJob = null
+        seekBarUpdateJob?.cancel()
+        seekBarUpdateJob = null
         sponsorSegments = emptyList()
         skippedSegmentIndices.clear()
         userSeekedRecently = false
@@ -874,6 +1097,8 @@ class PlaybackFragment : Fragment() {
         subtitleTracks = emptyList()
         currentSubtitleLang = null
         subtitleOverlay = null
+        subtitleScrollView = null
+        subtitlePopupView = null
         subtitleOverlayVisible = false
         currentTitle = ""
         currentSpeed = 1.0f

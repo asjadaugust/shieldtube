@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   shieldtube-api:
     build:
@@ -7,7 +6,7 @@ services:
     ports:
       - "9443:9443"
     volumes:
-      - ./cache:/app/cache
+      - /mnt/nas/shieldtube/cache:/app/cache
       - ./data:/app/data
       - ./config/certs:/app/config/certs:ro
     environment:
@@ -27,3 +26,7 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
     restart: unless-stopped
     network_mode: "service:shieldtube-api"
+    depends_on:
+      shieldtube-api:
+        condition: service_started
+        restart: true
