@@ -27,15 +27,21 @@ class BrowseFragment : BrowseSupportFragment() {
         private const val HEADER_HISTORY = 2L
         private const val HEADER_FOR_YOU = 3L
         private const val HEADER_DOWNLOADS = 4L
+        private const val HEADER_NEW_CHANNELS = 5L
+        private const val HEADER_SHORTS_RECOMMENDED = 6L
+        private const val HEADER_SHORTS_TRENDING = 7L
     }
 
     // Top-level adapter holds the rows
     private lateinit var rowsAdapter: ArrayObjectAdapter
     // Per-row content adapters
     private val downloadsAdapter = ArrayObjectAdapter(CardPresenter())
+    private val channelsAdapter = ArrayObjectAdapter(CardPresenter())
     private val forYouAdapter = ArrayObjectAdapter(CardPresenter())
     private val homeAdapter = ArrayObjectAdapter(CardPresenter())
     private val historyAdapter = ArrayObjectAdapter(CardPresenter())
+    private val shortsRecommendedAdapter = ArrayObjectAdapter(ShortsCardPresenter())
+    private val shortsTrendingAdapter = ArrayObjectAdapter(ShortsCardPresenter())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,7 +60,10 @@ class BrowseFragment : BrowseSupportFragment() {
         if (cached.isNotEmpty()) {
             forYouAdapter.addAll(0, cached)
         }
+        loadFeedForHeader(HEADER_SHORTS_RECOMMENDED)
+        loadFeedForHeader(HEADER_SHORTS_TRENDING)
         loadFeedForHeader(HEADER_DOWNLOADS)
+        loadFeedForHeader(HEADER_NEW_CHANNELS)
         loadFeedForHeader(HEADER_FOR_YOU)
         loadFeedForHeader(HEADER_HOME)
         loadFeedForHeader(HEADER_HISTORY)
@@ -63,6 +72,13 @@ class BrowseFragment : BrowseSupportFragment() {
     override fun onResume() {
         super.onResume()
         startCastPolling()
+        refreshFeed(HEADER_SHORTS_RECOMMENDED)
+        refreshFeed(HEADER_SHORTS_TRENDING)
+        refreshFeed(HEADER_DOWNLOADS)
+        refreshFeed(HEADER_NEW_CHANNELS)
+        refreshFeed(HEADER_HISTORY)
+        refreshFeed(HEADER_HOME)
+        refreshFeed(HEADER_FOR_YOU)
     }
 
     override fun onPause() {
@@ -80,7 +96,7 @@ class BrowseFragment : BrowseSupportFragment() {
         castPollJob?.cancel()
         castPollJob = lifecycleScope.launch {
             while (isActive) {
-                delay(5000)
+                delay(2000)
                 try {
                     val nowPlaying = ApiClient.api.getNowPlaying()
                     if (nowPlaying.videoId != null) {
@@ -101,8 +117,17 @@ class BrowseFragment : BrowseSupportFragment() {
     private fun setupHeaders() {
         rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
 
+        val shortsRecHeader = HeaderItem(HEADER_SHORTS_RECOMMENDED, "Shorts — For You")
+        rowsAdapter.add(ListRow(shortsRecHeader, shortsRecommendedAdapter))
+
+        val shortsTrendHeader = HeaderItem(HEADER_SHORTS_TRENDING, "Shorts — Trending")
+        rowsAdapter.add(ListRow(shortsTrendHeader, shortsTrendingAdapter))
+
         val downloadsHeader = HeaderItem(HEADER_DOWNLOADS, "Downloads")
         rowsAdapter.add(ListRow(downloadsHeader, downloadsAdapter))
+
+        val channelsHeader = HeaderItem(HEADER_NEW_CHANNELS, "New from your channels")
+        rowsAdapter.add(ListRow(channelsHeader, channelsAdapter))
 
         val forYouHeader = HeaderItem(HEADER_FOR_YOU, "For You")
         rowsAdapter.add(ListRow(forYouHeader, forYouAdapter))
@@ -118,13 +143,27 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun setupListeners() {
         // Navigate to playback when a card is clicked
-        setOnItemViewClickedListener { _, item, _, _ ->
+        setOnItemViewClickedListener { _, item, _, row ->
             val video = item as? Video ?: return@setOnItemViewClickedListener
-            val fragment = PlaybackFragment.newInstance(video.id)
-            parentFragmentManager.beginTransaction()
-                .replace(android.R.id.content, fragment)
-                .addToBackStack("playback")
-                .commit()
+            val listRow = row as? androidx.leanback.widget.ListRow
+            val headerId = listRow?.headerItem?.id
+
+            if (headerId == HEADER_SHORTS_RECOMMENDED || headerId == HEADER_SHORTS_TRENDING) {
+                val adapter = if (headerId == HEADER_SHORTS_RECOMMENDED) shortsRecommendedAdapter else shortsTrendingAdapter
+                val videoIds = ArrayList((0 until adapter.size()).map { (adapter.get(it) as Video).id })
+                val startIndex = videoIds.indexOf(video.id).coerceAtLeast(0)
+                val fragment = com.shieldtube.player.ShortsPlayerFragment.newInstance(videoIds, startIndex)
+                parentFragmentManager.beginTransaction()
+                    .replace(android.R.id.content, fragment)
+                    .addToBackStack("shorts")
+                    .commit()
+            } else {
+                val fragment = PlaybackFragment.newInstance(video.id)
+                parentFragmentManager.beginTransaction()
+                    .replace(android.R.id.content, fragment)
+                    .addToBackStack("playback")
+                    .commit()
+            }
         }
 
         // Load the appropriate feed when the user switches headers
@@ -143,6 +182,26 @@ class BrowseFragment : BrowseSupportFragment() {
         }
     }
 
+    private fun refreshFeed(headerId: Long) {
+        lifecycleScope.launch {
+            try {
+                val feedResponse = when (headerId) {
+                    HEADER_SHORTS_RECOMMENDED -> ApiClient.api.getShortsRecommended()
+                    HEADER_SHORTS_TRENDING -> ApiClient.api.getShortsTrending()
+                    HEADER_DOWNLOADS -> ApiClient.api.getDownloadLibrary()
+                    HEADER_NEW_CHANNELS -> ApiClient.api.getFeedChannels()
+                    HEADER_HISTORY -> ApiClient.api.getFeedHistory()
+                    HEADER_HOME -> ApiClient.api.getFeedHome()
+                    HEADER_FOR_YOU -> ApiClient.api.getFeedRecommended()
+                    else -> return@launch
+                }
+                updateRowContent(headerId, feedResponse.videos)
+            } catch (_: Exception) {
+                // Silent — don't toast on background refresh
+            }
+        }
+    }
+
     private fun loadFeedForHeader(headerId: Long) {
         if (headerId in loadedFeeds) {
             android.util.Log.d("ShieldTube", "loadFeed: header=$headerId already loaded, skipping")
@@ -154,7 +213,10 @@ class BrowseFragment : BrowseSupportFragment() {
             try {
                 android.util.Log.d("ShieldTube", "loadFeed: requesting feed for header=$headerId")
                 val feedResponse = when (headerId) {
+                    HEADER_SHORTS_RECOMMENDED -> ApiClient.api.getShortsRecommended()
+                    HEADER_SHORTS_TRENDING -> ApiClient.api.getShortsTrending()
                     HEADER_DOWNLOADS -> ApiClient.api.getDownloadLibrary()
+                    HEADER_NEW_CHANNELS -> ApiClient.api.getFeedChannels()
                     HEADER_FOR_YOU -> ApiClient.api.getFeedRecommended()
                     HEADER_HOME -> ApiClient.api.getFeedHome()
                     HEADER_HISTORY -> ApiClient.api.getFeedHistory()
@@ -165,9 +227,8 @@ class BrowseFragment : BrowseSupportFragment() {
             } catch (e: retrofit2.HttpException) {
                 android.util.Log.e("ShieldTube", "loadFeed: HTTP error for header=$headerId: ${e.code()} ${e.message()}", e)
                 if (e.code() == 401 && isAdded) {
-                    parentFragmentManager.beginTransaction()
-                        .replace(android.R.id.content, LoginFragment())
-                        .commit()
+                    android.util.Log.e("ShieldTube", "loadFeed: 401 on header=$headerId — check API_SECRET config")
+                    Toast.makeText(requireContext(), "API secret mismatch (401). Check server config.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
                 if (isAdded) {
@@ -184,7 +245,10 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun updateRowContent(headerId: Long, videos: List<Video>) {
         val targetAdapter = when (headerId) {
+            HEADER_SHORTS_RECOMMENDED -> shortsRecommendedAdapter
+            HEADER_SHORTS_TRENDING -> shortsTrendingAdapter
             HEADER_DOWNLOADS -> downloadsAdapter
+            HEADER_NEW_CHANNELS -> channelsAdapter
             HEADER_FOR_YOU -> forYouAdapter
             HEADER_HOME -> homeAdapter
             HEADER_HISTORY -> historyAdapter
