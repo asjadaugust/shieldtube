@@ -15,7 +15,7 @@ Add a dedicated Shorts browsing experience to ShieldTube: two new rows in `Brows
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/feed/shorts/subscriptions` | Shorts from subscribed channels |
+| `GET` | `/api/feed/shorts/recommended` | Shorts from channels with high affinity in the recommender |
 | `GET` | `/api/feed/shorts/trending` | Trending Shorts from YouTube's Shorts discovery feed |
 
 Both return the same shape as existing feed endpoints:
@@ -34,9 +34,9 @@ Both return the same shape as existing feed endpoints:
 
 ### Data Sourcing
 
-**Subscriptions Shorts (`/api/feed/shorts/subscriptions`):**
-- Reads subscribed channel IDs from the existing DB channels table (same source as the channel feed).
-- Caps at the 10 most recently active channels to keep scrape time bounded.
+**Recommended Channel Shorts (`/api/feed/shorts/recommended`):**
+- Queries the DB for top channels by watch-history affinity, using the same `channel_stats` CTE as `HeuristicRecommender` (`watch_count` + `avg_completion` per channel).
+- Caps at the 10 highest-affinity channels to keep scrape time bounded.
 - For each channel, yt-dlp scrapes `youtube.com/channel/{channel_id}/shorts` and returns the top 5 Shorts.
 - Results merged into a flat list (up to 50 items) and sorted by recency.
 - Cached in-memory for 1 hour.
@@ -59,8 +59,8 @@ A new `backend/services/shorts_feed.py` handles both scrapes, reusing yt-dlp opt
 Two new row constants added to `BrowseFragment`:
 
 ```kotlin
-private val SHORTS_SUBS = 6       // "Shorts — Following"
-private val SHORTS_TRENDING = 7   // "Shorts — Trending"
+private val SHORTS_RECOMMENDED = 6  // "Shorts — For You"
+private val SHORTS_TRENDING = 7     // "Shorts — Trending"
 ```
 
 Rows are positioned above the existing content rows so Shorts appear near the top of the browse screen. Each row loads from its respective endpoint via the existing `ApiClient` pattern.
@@ -77,8 +77,8 @@ A new `ShortsCardPresenter` (alongside the existing `CardPresenter`) renders por
 Two new methods on `ShieldTubeApi`:
 
 ```kotlin
-@GET("api/feed/shorts/subscriptions")
-suspend fun getShortsSubscriptions(): List<VideoMeta>
+@GET("api/feed/shorts/recommended")
+suspend fun getShortsRecommended(): List<VideoMeta>
 
 @GET("api/feed/shorts/trending")
 suspend fun getShortsTrending(): List<VideoMeta>
