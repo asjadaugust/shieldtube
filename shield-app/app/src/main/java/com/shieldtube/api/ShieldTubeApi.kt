@@ -15,6 +15,9 @@ interface ShieldTubeApi {
     @GET("/api/feed/history")
     suspend fun getFeedHistory(): FeedResponse
 
+    @GET("/api/feed/channels")
+    suspend fun getFeedChannels(): FeedResponse
+
     @GET("/api/feed/recommended")
     suspend fun getFeedRecommended(): FeedResponse
 
@@ -62,4 +65,10 @@ interface ShieldTubeApi {
 
     @DELETE("/api/playback/status")
     suspend fun clearPlaybackStatus()
+
+    @GET("/api/feed/shorts/recommended")
+    suspend fun getShortsRecommended(): FeedResponse
+
+    @GET("/api/feed/shorts/trending")
+    suspend fun getShortsTrending(): FeedResponse
 }
