@@ -20,6 +20,7 @@ private data class FeedTab(val label: String, val type: String)
 
 private val TABS = listOf(
     FeedTab("For You", "recommended"),
+    FeedTab("Channels", "channels"),
     FeedTab("Home", "home"),
     FeedTab("History", "history"),
 )

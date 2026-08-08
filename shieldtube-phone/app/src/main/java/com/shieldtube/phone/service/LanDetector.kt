@@ -67,11 +67,8 @@ class LanDetector @Inject constructor(
     }
 
     suspend fun getStreamBaseUrl(): String {
-        return if (_isAvailable.value) {
-            prefs.lanUrl.first().takeIf { it.isNotBlank() }
-                ?: prefs.backendUrl.first()
-        } else {
-            prefs.backendUrl.first()
-        }
+        // Prefer LAN URL when configured (probe may not be running)
+        return prefs.lanUrl.first().takeIf { it.isNotBlank() }
+            ?: prefs.backendUrl.first()
     }
 }

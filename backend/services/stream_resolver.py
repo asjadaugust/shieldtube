@@ -11,11 +11,18 @@ QUALITY_FORMATS = {
 
 def resolve_stream(video_id: str, prefer_hdr: bool = True, quality: str = "auto") -> dict:
     """Resolve a YouTube video ID into separate video and audio stream URLs."""
+    from backend.config import settings
     opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,
+        "js_runtimes": {"node": {"path": "/usr/bin/node"}},
+        "remote_components": {"ejs:github"},
     }
+    if settings.ytdlp_cookies_path:
+        opts["cookiefile"] = settings.ytdlp_cookies_path
+    if settings.ytdlp_proxy:
+        opts["proxy"] = settings.ytdlp_proxy
 
     if quality != "auto" and quality in QUALITY_FORMATS:
         opts["format"] = QUALITY_FORMATS[quality]

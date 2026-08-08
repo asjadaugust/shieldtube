@@ -101,7 +101,10 @@ class PlayerViewModel @Inject constructor(
     fun castToShield() {
         viewModelScope.launch {
             try {
-                api.castToShield(CastBody(url = _uiState.value.streamUrl))
+                val videoId = _uiState.value.videoId
+                api.castToShield(CastBody(videoId = videoId))
+                // Also send as playback command so active PlaybackFragment picks it up
+                api.sendPlaybackCommand(PlaybackCommandBody(action = "play", value = videoId))
                 startRemoteMode()
             } catch (_: Exception) {
                 // Silently ignore cast failures
@@ -120,14 +123,19 @@ class PlayerViewModel @Inject constructor(
     fun startRemoteMode() {
         if (remotePollingJob?.isActive == true) return
         remotePollingJob = viewModelScope.launch {
+            var gracePollsRemaining = 10 // 10s grace for Shield to start playback
             while (isActive) {
                 try {
                     val status = api.getPlaybackStatus()
-                    _remoteStatus.value = status
-                    // Shield stopped playing — exit remote mode
-                    if (status.videoId == null) {
+                    if (status.videoId != null) {
+                        _remoteStatus.value = status
+                        gracePollsRemaining = 0 // Connected, no more grace
+                    } else if (gracePollsRemaining <= 0) {
+                        // Shield stopped playing — exit remote mode
                         stopRemoteMode()
                         return@launch
+                    } else {
+                        gracePollsRemaining--
                     }
                 } catch (_: Exception) {}
                 delay(1000)

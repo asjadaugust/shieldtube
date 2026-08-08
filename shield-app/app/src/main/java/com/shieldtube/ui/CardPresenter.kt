@@ -113,6 +113,11 @@ class CardPresenter : Presenter() {
         cardView.titleText = video.title
         cardView.contentText = buildString {
             append(video.channelName)
+            val views = formatViewCount(video.viewCount)
+            if (views.isNotEmpty()) {
+                append(" · ")
+                append(views)
+            }
             val relTime = formatRelativeTime(video.publishedAt)
             if (relTime.isNotEmpty()) {
                 append(" · ")

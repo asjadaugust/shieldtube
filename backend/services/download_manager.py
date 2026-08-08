@@ -44,10 +44,14 @@ class DownloadManager:
         self._active: dict[str, DownloadState] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
+    # Prefix for low-priority subprocess execution (CPU idle + IO idle)
+    _LOW_PRIO = ["nice", "-n", "19", "ionice", "-c", "3"]
+
     async def _remux_to_faststart(self, file_path: Path, video_id: str) -> None:
         """Remux a fragmented MP4 to standard MP4 with moov at start for seeking."""
         temp_path = file_path.with_suffix(".tmp.mp4")
         cmd = [
+            *self._LOW_PRIO,
             "ffmpeg", "-y", "-i", str(file_path),
             "-c", "copy",
             "-movflags", "+faststart",
@@ -151,7 +155,7 @@ class DownloadManager:
             output_path = self._output_path(cache_key)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            cmd = ["ffmpeg", "-y", "-i", video_url]
+            cmd = [*self._LOW_PRIO, "ffmpeg", "-y", "-i", video_url]
             if audio_url is not None:
                 cmd += ["-i", audio_url]
             cmd += [
@@ -312,15 +316,22 @@ class DownloadManager:
             await self._db.commit()
 
             cmd = [
+                *self._LOW_PRIO,
                 "yt-dlp",
                 "--concurrent-fragments", str(n_frags),
                 "--format", fmt,
                 "--merge-output-format", "mp4",
                 "--no-part",
                 "--quiet", "--no-warnings",
+                "--js-runtimes", "node:/usr/bin/node",
+                "--remote-components", "ejs:github",
                 "-o", str(temp_path),
-                url,
             ]
+            if settings.ytdlp_cookies_path:
+                cmd.extend(["--cookies", settings.ytdlp_cookies_path])
+            if settings.ytdlp_proxy:
+                cmd.extend(["--proxy", settings.ytdlp_proxy])
+            cmd.append(url)
 
             logger.info("yt-dlp queue download starting: %s '%s' (fragments=%d)", video_id, title, n_frags)
 
@@ -362,6 +373,7 @@ class DownloadManager:
             # Remux to seekable MP4 with moov at start (fast, stream copy)
             logger.info("Remuxing %s to seekable MP4 (faststart)...", video_id)
             remux_cmd = [
+                *self._LOW_PRIO,
                 "ffmpeg", "-y", "-i", str(temp_path),
                 "-c", "copy",
                 "-movflags", "+faststart",

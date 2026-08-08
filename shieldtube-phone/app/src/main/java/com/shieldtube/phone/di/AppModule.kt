@@ -58,7 +58,10 @@ object AppModule {
     @Singleton
     fun provideRetrofit(client: OkHttpClient, moshi: Moshi, prefs: AppPreferences): Retrofit {
         val baseUrl = runBlocking {
-            prefs.backendUrl.first().takeIf { it.isNotBlank() } ?: "https://localhost"
+            // Prefer LAN URL when configured (avoids Cloudflare tunnel dependency)
+            prefs.lanUrl.first().takeIf { it.isNotBlank() }
+                ?: prefs.backendUrl.first().takeIf { it.isNotBlank() }
+                ?: "https://localhost"
         }
         val normalizedUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()

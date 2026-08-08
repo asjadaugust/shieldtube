@@ -93,7 +93,6 @@ class PlaybackFragment : Fragment() {
     // Remote control state
     private var commandPollJob: Job? = null
     private var statusReportJob: Job? = null
-    private var currentTitle: String = ""
 
     private var controlsHideJob: Job? = null
     private val CONTROLS_HIDE_DELAY = 5000L
@@ -183,7 +182,14 @@ class PlaybackFragment : Fragment() {
         subtitleScrollView = null
         subtitlePopupView = subtitlePopup
 
-        val container = FrameLayout(requireContext()).apply {
+        val container = object : FrameLayout(requireContext()) {
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    if (handleKeyDown(event.keyCode, event)) return true
+                }
+                return super.dispatchKeyEvent(event)
+            }
+        }.apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -257,14 +263,6 @@ class PlaybackFragment : Fragment() {
 
             // Add subtitle popup ON TOP of controls
             addView(subtitlePopup)
-
-            setOnKeyListener { _, keyCode, event ->
-                if (event.action == KeyEvent.ACTION_DOWN) {
-                    handleKeyDown(keyCode, event)
-                } else {
-                    false
-                }
-            }
         }
 
         return container
@@ -484,6 +482,13 @@ class PlaybackFragment : Fragment() {
                                 val newSpeed = cmd.value?.toFloatOrNull() ?: 1f
                                 currentSpeed = newSpeed
                                 exoPlayer.setPlaybackParameters(PlaybackParameters(newSpeed))
+                            }
+                            "play" -> {
+                                val newVideoId = cmd.value
+                                if (newVideoId != null && newVideoId != videoId) {
+                                    switchToVideo(newVideoId)
+                                    return@launch // Stop this loop; initPlayer starts a new one
+                                }
                             }
                         }
                     }
@@ -961,6 +966,7 @@ class PlaybackFragment : Fragment() {
     private fun hideQuickSeek() {
         quickSeekBar?.visibility = View.GONE
         quickSeekHideJob?.cancel()
+        view?.requestFocus()
     }
 
     // --- Full Controls (Center button, auto-hide) ---
@@ -980,15 +986,15 @@ class PlaybackFragment : Fragment() {
         fullControls?.visibility = View.GONE
         controlsHideJob?.cancel()
         seekBarUpdateJob?.cancel()
+        view?.requestFocus()
     }
 
     private fun scheduleControlsHide() {
         controlsHideJob?.cancel()
         controlsHideJob = lifecycleScope.launch {
-            delay(CONTROLS_HIDE_DELAY)
-            if (player?.isPlaying == true) {
-                hideControls()
-            }
+            val timeout = if (player?.isPlaying == true) CONTROLS_HIDE_DELAY else CONTROLS_HIDE_DELAY * 2
+            delay(timeout)
+            hideControls()
         }
     }
 
@@ -1111,5 +1117,50 @@ class PlaybackFragment : Fragment() {
         qualityOverlayVisible = false
         player?.release()
         player = null
+    }
+
+    /**
+     * Switch to a new video in-place without fragment navigation.
+     * Skips clearPlaybackStatus to avoid a status gap for the phone remote.
+     */
+    private fun switchToVideo(newVideoId: String) {
+        // Cancel all background jobs
+        commandPollJob?.cancel()
+        statusReportJob?.cancel()
+        progressJob?.cancel()
+        skipCheckJob?.cancel()
+        chapterCheckJob?.cancel()
+        controlsHideJob?.cancel()
+        quickSeekHideJob?.cancel()
+        seekBarUpdateJob?.cancel()
+
+        // Reset state
+        sponsorSegments = emptyList()
+        skippedSegmentIndices.clear()
+        userSeekedRecently = false
+        chapters = emptyList()
+        currentChapterIndex = -1
+        subtitleTracks = emptyList()
+        currentSubtitleLang = null
+        currentTitle = ""
+        currentSpeed = 1.0f
+        selectedQuality = "auto"
+        availableFormats = emptyList()
+
+        // Hide overlays
+        hideControls()
+        subtitlePopupView?.visibility = View.GONE
+        subtitleOverlayVisible = false
+        speedOverlay?.visibility = View.GONE
+        qualityOverlay?.visibility = View.GONE
+        qualityOverlayVisible = false
+
+        // Release old player
+        player?.release()
+        player = null
+
+        // Set new video ID and reinitialize
+        arguments = Bundle().apply { putString(ARG_VIDEO_ID, newVideoId) }
+        initPlayer()
     }
 }

@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     download_wait_timeout: int = 30
     ytdlp_concurrent_fragments: int = 5
     download_max_parallel: int = 3
+    ytdlp_cookies_path: str = ""
+    ytdlp_proxy: str = ""  # e.g. socks5://gluetun:1080 or http://proxy:8080
 
     # Security
     api_secret: str = ""

@@ -83,7 +83,7 @@ class AuthManager:
 
         Returns at minimum: {"access_token": "...", "expires_in": 3600}
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 "https://oauth2.googleapis.com/token",
                 data={

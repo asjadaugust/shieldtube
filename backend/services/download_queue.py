@@ -15,6 +15,7 @@ class DownloadQueue:
     def __init__(self, download_manager: DownloadManager):
         self._dm = download_manager
         self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._queued: set[str] = set()  # tracks what's already queued or in-progress
         self._worker_tasks: list[asyncio.Task] = []
 
     async def start(self):
@@ -35,11 +36,13 @@ class DownloadQueue:
         self._worker_tasks.clear()
 
     async def enqueue(self, video_id: str):
-        await self._queue.put(video_id)
+        if video_id not in self._queued:
+            self._queued.add(video_id)
+            await self._queue.put(video_id)
 
     async def enqueue_many(self, video_ids: list[str]):
         for vid in video_ids:
-            await self._queue.put(vid)
+            await self.enqueue(vid)
 
     @property
     def pending_count(self) -> int:
@@ -64,4 +67,5 @@ class DownloadQueue:
             except Exception as e:
                 logger.warning("Worker %d: download failed for %s: %s", worker_id, video_id, e)
             finally:
+                self._queued.discard(video_id)
                 self._queue.task_done()

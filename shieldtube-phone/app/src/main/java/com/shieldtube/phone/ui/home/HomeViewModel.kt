@@ -31,7 +31,7 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    val baseUrl: StateFlow<String> = prefs.backendUrl
+    val baseUrl: StateFlow<String> = prefs.effectiveBaseUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     init {

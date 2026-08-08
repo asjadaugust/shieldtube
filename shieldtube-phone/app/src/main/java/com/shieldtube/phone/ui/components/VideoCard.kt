@@ -149,6 +149,16 @@ fun VideoCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp),
                     )
+                    val meta = formatMeta(video.viewCount, video.publishedAt)
+                    if (meta.isNotEmpty()) {
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -209,6 +219,41 @@ private fun formatDuration(raw: String): String {
     } catch (e: Exception) {
         ""
     }
+}
+
+private fun formatViewCount(count: String?): String {
+    val n = count?.toLongOrNull() ?: return ""
+    return when {
+        n >= 1_000_000_000L -> "%.1fB views".format(n / 1_000_000_000.0)
+        n >= 1_000_000L -> "%.1fM views".format(n / 1_000_000.0)
+        n >= 1_000L -> "%.0fK views".format(n / 1_000.0)
+        else -> "$n views"
+    }
+}
+
+private fun formatRelativeTime(isoDate: String?): String {
+    if (isoDate.isNullOrEmpty()) return ""
+    return try {
+        val then = java.time.Instant.parse(isoDate)
+        val now = java.time.Instant.now()
+        val minutes = java.time.temporal.ChronoUnit.MINUTES.between(then, now)
+        when {
+            minutes < 60 -> "just now"
+            minutes < 1440 -> "${minutes / 60} hours ago"
+            minutes < 10080 -> "${minutes / 1440} days ago"
+            minutes < 43200 -> "${minutes / 10080} weeks ago"
+            minutes < 525600 -> "${minutes / 43200} months ago"
+            else -> "${minutes / 525600} years ago"
+        }
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+private fun formatMeta(viewCount: String?, publishedAt: String?): String {
+    val views = formatViewCount(viewCount)
+    val time = formatRelativeTime(publishedAt)
+    return listOf(views, time).filter { it.isNotEmpty() }.joinToString(" · ")
 }
 
 private fun parseIso8601Duration(iso: String): Long {

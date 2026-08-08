@@ -45,7 +45,7 @@ class DownloadsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DownloadsUiState())
     val uiState: StateFlow<DownloadsUiState> = _uiState.asStateFlow()
 
-    val baseUrl: StateFlow<String> = prefs.backendUrl
+    val baseUrl: StateFlow<String> = prefs.effectiveBaseUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
     init {

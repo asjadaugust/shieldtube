@@ -116,7 +116,7 @@ class VideoRepo:
                 for video in videos:
                     await self._db.execute(
                         """
-                        INSERT OR REPLACE INTO videos (
+                        INSERT INTO videos (
                             id, title, channel_name, channel_id, view_count, duration,
                             published_at, description, thumbnail_path, cached_video_path,
                             cache_status, last_accessed, created_at, updated_at
@@ -127,6 +127,19 @@ class VideoRepo:
                             COALESCE(:created_at, CURRENT_TIMESTAMP),
                             CURRENT_TIMESTAMP
                         )
+                        ON CONFLICT(id) DO UPDATE SET
+                            title = excluded.title,
+                            channel_name = excluded.channel_name,
+                            channel_id = excluded.channel_id,
+                            view_count = COALESCE(excluded.view_count, view_count),
+                            duration = COALESCE(excluded.duration, duration),
+                            published_at = COALESCE(excluded.published_at, published_at),
+                            description = COALESCE(excluded.description, description),
+                            thumbnail_path = COALESCE(excluded.thumbnail_path, thumbnail_path),
+                            cached_video_path = COALESCE(excluded.cached_video_path, cached_video_path),
+                            cache_status = COALESCE(excluded.cache_status, cache_status),
+                            last_accessed = COALESCE(excluded.last_accessed, last_accessed),
+                            updated_at = CURRENT_TIMESTAMP
                         """,
                         {
                             "id": video.id,

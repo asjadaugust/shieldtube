@@ -105,8 +105,8 @@ async def get_home_feed(request: Request):
             import json as _json
             video_ids = _json.loads(row["video_ids_json"])
             videos = await youtube_api._load_cached_videos(video_ids)
-            return _build_response("home", videos, True, row["fetched_at"])
-        return _build_response("home", [], True, None)
+            return await _build_response("home", videos, True, row["fetched_at"])
+        return await _build_response("home", [], True, None)
 
 
 @router.get("/feed/subscriptions")
@@ -144,3 +144,20 @@ async def get_watch_later_feed(request: Request):
         asyncio.create_task(thumb_cache.cache_thumbnails(videos))
 
     return await _build_response("watch_later", videos, from_cache, cached_at)
+
+
+@router.get("/feed/channels")
+async def get_channels_feed():
+    """Return latest uploads from the user's most-watched channels."""
+    db = await get_db()
+    rows = await db.execute_fetchall(
+        """SELECT v.id, v.title, v.channel_name, v.channel_id,
+                  v.view_count, v.duration, v.published_at
+           FROM channel_feed_cache cfc
+           JOIN videos v ON v.id = cfc.video_id
+           WHERE v.id NOT IN (SELECT video_id FROM watch_history)
+           ORDER BY v.published_at DESC
+           LIMIT 50"""
+    )
+    videos = [dict(r) for r in rows]
+    return await _build_response("channels", videos, False, None)

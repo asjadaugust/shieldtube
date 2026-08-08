@@ -25,8 +25,13 @@ def get_db_write_lock() -> asyncio.Lock:
 async def init_db() -> None:
     """Open connection and run migrations."""
     global _db
-    _db = await aiosqlite.connect(settings.db_path)
+    _db = await aiosqlite.connect(settings.db_path, timeout=30)
     _db.row_factory = aiosqlite.Row
+    # WAL mode allows concurrent readers + one writer across processes.
+    # busy_timeout makes SQLite retry instead of immediately raising "database is locked".
+    await _db.execute("PRAGMA journal_mode=WAL")
+    await _db.execute("PRAGMA busy_timeout=30000")
+    await _db.commit()
     await _run_migrations(_db)
 
 

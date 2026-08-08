@@ -106,15 +106,18 @@ class LoginFragment : Fragment() {
     }
 
     private fun checkAuthAndProceed() {
+        android.util.Log.d("ShieldTube", "checkAuthAndProceed: starting")
         lifecycleScope.launch {
             try {
                 val status = ApiClient.api.getAuthStatus()
+                android.util.Log.d("ShieldTube", "checkAuthAndProceed: authenticated=${status.authenticated}")
                 if (status.authenticated) {
                     navigateToBrowse()
                 } else {
                     startDeviceFlow()
                 }
             } catch (e: Exception) {
+                android.util.Log.e("ShieldTube", "checkAuthAndProceed: exception ${e.javaClass.simpleName}: ${e.message}", e)
                 statusText.text = "Cannot reach server: ${e.javaClass.simpleName}: ${e.message}"
                 retryButton.visibility = View.VISIBLE
                 retryButton.requestFocus()
@@ -182,6 +185,7 @@ class LoginFragment : Fragment() {
     }
 
     private fun navigateToBrowse() {
+        android.util.Log.d("ShieldTube", "navigateToBrowse: replacing with BrowseFragment")
         parentFragmentManager.beginTransaction()
             .replace(android.R.id.content, BrowseFragment())
             .commit()

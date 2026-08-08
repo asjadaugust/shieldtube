@@ -34,6 +34,11 @@ class AppPreferences @Inject constructor(
     val lanUrl: Flow<String> = context.dataStore.data
         .map { prefs -> prefs[KEY_LAN_URL] ?: "" }
 
+    /** Prefer LAN URL when configured, fall back to backend (tunnel) URL. */
+    val effectiveBaseUrl: Flow<String> = combine(lanUrl, backendUrl) { lan, backend ->
+        lan.takeIf { it.isNotBlank() } ?: backend
+    }
+
     val isConfigured: Flow<Boolean> = combine(backendUrl, apiSecret) { url, secret ->
         url.isNotBlank() && secret.isNotBlank()
     }

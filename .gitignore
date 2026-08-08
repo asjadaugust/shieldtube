@@ -12,3 +12,9 @@ local.properties
 config/certs/
 *.pem
 rec_engine/embeddings.db
+
+# secrets / runtime state - never commit (repo is public)
+backend/config/cookies.txt
+data/
+*.db-shm
+*.db-wal

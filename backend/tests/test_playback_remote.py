@@ -29,6 +29,8 @@ async def client(mem_db):
         patch("backend.db.database.init_db", new_callable=AsyncMock),
         patch("backend.db.database.close_db", new_callable=AsyncMock),
         patch("backend.api.routers.cast.get_db", new=_fake_get_db),
+        patch("backend.api.middleware.SharedSecretMiddleware.dispatch",
+              new=lambda self, req, call_next: call_next(req)),
     ):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

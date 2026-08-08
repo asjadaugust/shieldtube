@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
@@ -197,15 +198,30 @@ private fun LocalPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        IconButton(
-            onClick = onBack,
+        Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(8.dp),
         ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                )
+            }
+        }
+
+        // Cast to Shield TV button (top-right)
+        IconButton(
+            onClick = { viewModel.castToShield() },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+        ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
+                imageVector = Icons.Filled.Cast,
+                contentDescription = "Cast to Shield TV",
                 tint = Color.White,
             )
         }

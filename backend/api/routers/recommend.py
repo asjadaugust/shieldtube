@@ -285,6 +285,7 @@ async def get_download_library(request: Request):
     db = await get_db()
     rows = await db.execute_fetchall(
         """SELECT id, title, channel_name, channel_id, duration,
+                  view_count, published_at,
                   cache_status, download_source, cached_at, cached_video_path
            FROM videos
            WHERE cache_status IN ('cached', 'pre-cached')
@@ -304,6 +305,8 @@ async def get_download_library(request: Request):
             "channel_name": row["channel_name"],
             "channel_id": row["channel_id"],
             "duration": row["duration"],
+            "view_count": row["view_count"],
+            "published_at": row["published_at"],
             "cache_status": row["cache_status"],
             "download_source": row["download_source"] or "auto",
             "cached_at": row["cached_at"],
